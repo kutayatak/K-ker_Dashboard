@@ -685,18 +685,27 @@ function TaskCard({
         </div>
 
         {/* Route */}
-        <div className="flex items-center gap-1.5 text-xs font-medium mb-2.5 bg-muted/50 px-2 py-1.5 rounded border border-border/50">
-          <span className="truncate flex-1 text-foreground" title={task.pickupLocation}>
-            {task.pickupLocation}
-          </span>
-          <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
-          <span
-            className="truncate flex-1 text-right text-foreground"
-            title={task.dropoffLocation}
-          >
-            {task.dropoffLocation}
-          </span>
-        </div>
+        {task.type === "extra" ? (
+          <div className="text-xs font-semibold mb-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-300 rounded px-2.5 py-2 text-foreground/90">
+            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">Ekstra İş Detayı</div>
+            <div className="line-clamp-2 leading-relaxed" title={task.pickupLocation}>
+              {task.pickupLocation}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-xs font-medium mb-2.5 bg-muted/50 px-2 py-1.5 rounded border border-border/50">
+            <span className="truncate flex-1 text-foreground" title={task.pickupLocation}>
+              {task.pickupLocation}
+            </span>
+            <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+            <span
+              className="truncate flex-1 text-right text-foreground"
+              title={task.dropoffLocation}
+            >
+              {task.dropoffLocation}
+            </span>
+          </div>
+        )}
 
         {/* Pax + vehicle */}
         <div className="flex items-center justify-between text-xs">

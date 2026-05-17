@@ -112,7 +112,7 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
-      dropoffLocation: "Esenboğa Havalimanı",
+      dropoffLocation: "Ekstra",
       scheduledTime: buildScheduledTime(timeRaw),
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
@@ -128,8 +128,8 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
       type: "extra",
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
-      pickupLocation: "Esenboğa Havalimanı",
-      dropoffLocation: desc,
+      pickupLocation: desc,
+      dropoffLocation: "Ekstra",
       scheduledTime: buildScheduledTime(timeRaw),
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
@@ -602,11 +602,18 @@ function PreviewColumn({ title, tasks }: { title: string; tasks: any[] }) {
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground bg-slate-50 dark:bg-slate-800 p-1 rounded">
-              <span className="truncate flex-1">{t.pickupLocation}</span>
-              <ArrowRight className="w-3 h-3 shrink-0" />
-              <span className="truncate flex-1 text-right">{t.dropoffLocation}</span>
-            </div>
+            {t.type === "extra" ? (
+              <div className="text-xs font-semibold bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-300 rounded p-1.5 text-foreground/90 mt-1">
+                <span className="text-[9px] text-amber-600 font-bold uppercase tracking-wider block mb-0.5">Ekstra İş Detayı</span>
+                <span className="truncate block" title={t.pickupLocation}>{t.pickupLocation}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground bg-slate-50 dark:bg-slate-800 p-1 rounded mt-1">
+                <span className="truncate flex-1">{t.pickupLocation}</span>
+                <ArrowRight className="w-3 h-3 shrink-0" />
+                <span className="truncate flex-1 text-right">{t.dropoffLocation}</span>
+              </div>
+            )}
             <div className="text-[10px] text-muted-foreground mt-1">
               {t.passengerCount} kişi{t.notes ? ` · ${t.notes}` : ""}
             </div>
