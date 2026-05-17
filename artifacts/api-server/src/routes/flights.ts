@@ -27,7 +27,7 @@ async function fetchFlightFromApi(flightCode: string): Promise<{
     const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!resp.ok) return null;
 
-    const json = await resp.json();
+    const json = (await resp.json()) as any;
     const flight = json?.data?.[0];
     if (!flight) return null;
 

@@ -80,7 +80,7 @@ export function Board() {
 
   const handleFlightCheck = () => {
     checkDelaysMutation.mutate(
-      {},
+      undefined,
       {
         onSuccess: (result) => {
           setLastUpdateCount(result.updatedTasks);
@@ -290,7 +290,7 @@ export function Board() {
 }
 
 /* ── Queue list (shared between desktop sidebar and mobile tab) ─────────── */
-function QueueList({ queue }: { queue: ReturnType<typeof useGetVehicleQueue>["data"] & object[] }) {
+function QueueList({ queue }: { queue: any[] }) {
   if (!queue.length) return null;
   return (
     <>

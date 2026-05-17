@@ -47,7 +47,6 @@ export function Vehicles() {
     const data: VehicleUpdate = {
       name: fd.get("name") as string,
       plate: fd.get("plate") as string,
-      type: fd.get("type") as "fixed" | "outsource",
       driverName: fd.get("driverName") as string,
       phone: fd.get("phone") as string,
       capacity: parseInt(fd.get("capacity") as string) || 4,

@@ -14,8 +14,8 @@ router.get("/", async (req, res) => {
   const conditions = [];
 
   if (vehicleId) conditions.push(eq(accountingTable.vehicleId, vehicleId));
-  if (startDate) conditions.push(gte(accountingTable.date, startDate));
-  if (endDate) conditions.push(lte(accountingTable.date, endDate));
+  if (startDate) conditions.push(gte(accountingTable.date, startDate.toISOString().split("T")[0]));
+  if (endDate) conditions.push(lte(accountingTable.date, endDate.toISOString().split("T")[0]));
 
   const records = conditions.length
     ? await db.select().from(accountingTable).where(and(...conditions))
