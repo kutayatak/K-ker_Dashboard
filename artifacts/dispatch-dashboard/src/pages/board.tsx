@@ -514,7 +514,11 @@ function TaskCard({
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-1 text-muted-foreground">
             <Users className="w-3.5 h-3.5" />
-            <span>{task.passengerCount} kişi</span>
+            <span>
+              {task.notes && (task.notes.includes("CPT") || task.notes.includes("KBN") || task.notes.toLowerCase().includes("cpt") || task.notes.toLowerCase().includes("kbn"))
+                ? (task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes)
+                : `${task.passengerCount} kişi`}
+            </span>
           </div>
           {task.vehicleName && (
             <span

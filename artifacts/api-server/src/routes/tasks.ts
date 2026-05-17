@@ -145,7 +145,10 @@ router.post("/batch-notify", async (req, res) => {
 
     for (const task of data.tasks) {
       const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-      messageText += `🕒 ${time} | ✈️ ${task.flightCode ?? "-"} | 👥 ${task.passengerCount} kişi\n📍 ${task.pickupLocation} -> 🏁 ${task.dropoffLocation}\n\n`;
+      const crewInfo = (task.notes && (task.notes.includes("CPT") || task.notes.includes("KBN") || task.notes.toLowerCase().includes("cpt") || task.notes.toLowerCase().includes("kbn")))
+        ? (task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes)
+        : `${task.passengerCount} kişi`;
+      messageText += `🕒 ${time} | ✈️ ${task.flightCode ?? "-"} | 👥 ${crewInfo}\n📍 ${task.pickupLocation} -> 🏁 ${task.dropoffLocation}\n\n`;
       updatedTaskIds.push(task.id);
     }
     messageText += `Lütfen görevleri aldığınızı onaylayın. İyi çalışmalar!`;

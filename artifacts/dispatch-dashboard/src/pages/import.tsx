@@ -67,12 +67,12 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
 
     return {
       type: "hotel_pickup",
-      flightCode: flightCode || null,
+      flightCode: flightCode || undefined,
       passengerCount: parsePassengerCount(ekip),
       pickupLocation: hotelName,
       dropoffLocation: "Esenboğa Havalimanı",
       scheduledTime: buildScheduledTime(timeRaw),
-      notes: plate ? `Plaka: ${plate}` : undefined,
+      notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
   } else {
     // Columns: H=UÇUŞ KODU, I=PLAKA, J=ÖNÜ SAAT, K=OTEL ADI, L=EKİP SAYISI, M=KM
@@ -87,12 +87,12 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
 
     return {
       type: "airport_run",
-      flightCode: flightCode || null,
+      flightCode: flightCode || undefined,
       passengerCount: parsePassengerCount(ekip),
       pickupLocation: "Esenboğa Havalimanı",
       dropoffLocation: hotelName,
       scheduledTime: buildScheduledTime(timeRaw),
-      notes: plate ? `Plaka: ${plate}` : undefined,
+      notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
   }
 }
@@ -108,13 +108,13 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
     if (!isValidValue(row[3]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
 
     return {
-      type: "hotel_pickup",
-      flightCode: null,
+      type: "extra",
+      flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
       dropoffLocation: "Esenboğa Havalimanı",
       scheduledTime: buildScheduledTime(timeRaw),
-      notes: plate ? `Plaka: ${plate}` : undefined,
+      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
   } else {
     // Columns: H=ÖNÜ SAAT, I=PLAKA, J=OTEL ADI / AÇIKLAMA
@@ -125,13 +125,13 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
     if (!isValidValue(row[9]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
 
     return {
-      type: "airport_run",
-      flightCode: null,
+      type: "extra",
+      flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: "Esenboğa Havalimanı",
       dropoffLocation: desc,
       scheduledTime: buildScheduledTime(timeRaw),
-      notes: plate ? `Plaka: ${plate}` : undefined,
+      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
   }
 }
