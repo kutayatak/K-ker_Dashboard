@@ -204,65 +204,97 @@ export function ImportTasks() {
           }
           setParsedTasks(tasks);
         } else {
-          // Parse vehicles (first 15 Fixed vehicles, skipping duty/MEMUR/VARDIYA)
+          // Parse vehicles (first 15 Crew vehicles + Esnaf/outsource vehicles)
           const vehicles: any[] = [];
+          let currentSection: "crew" | "esnaf" = "crew";
+
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             if (!row) continue;
 
-            const rawSno = row[0];
-            if (rawSno == null) continue;
-            const cleanSno = String(rawSno).replace(/\s/g, "");
-            const sno = Number(cleanSno);
+            // Check if we hit the Esnaf section header
+            const rowStr = row.map(c => String(c || "")).join(" ");
+            if (rowStr.includes("ESNAF ARAÇLARI")) {
+              currentSection = "esnaf";
+              continue;
+            }
 
-            // Only accept the first 15 crew/task vehicles (S.NO 1 to 15)
-            if (!isNaN(sno) && sno >= 1 && sno <= 15) {
-              const baseName = String(row[1] || "").trim();
-              const basePlate = String(row[2] || "").trim();
-              if (!basePlate || basePlate === "System.Xml.XmlElement") continue;
+            if (currentSection === "crew") {
+              const rawSno = row[0];
+              if (rawSno == null) continue;
+              const cleanSno = String(rawSno).replace(/\s/g, "");
+              const sno = Number(cleanSno);
 
-              // Vardiya 1
-              const d1 = String(row[3] || "").trim();
-              const p1 = String(row[4] || "").trim();
-              if (isValidValue(row[3]) && d1 && d1 !== "null") {
-                vehicles.push({
-                  name: `${baseName} (V1)`,
-                  plate: `${basePlate} (V1)`,
-                  type: "fixed",
-                  driverName: d1,
-                  phone: p1 || "Belirtilmedi",
-                  capacity: 4,
-                  notes: "Vardiya 1 Şoförü",
-                });
+              // Only accept the first 15 crew/task vehicles (S.NO 1 to 15)
+              if (!isNaN(sno) && sno >= 1 && sno <= 15) {
+                const baseName = String(row[1] || "").trim();
+                const basePlate = String(row[2] || "").trim();
+                if (!basePlate || basePlate === "System.Xml.XmlElement") continue;
+
+                // Ensure it is indeed a Crew vehicle (skip MEMUR/VARDIYA/etc. that restart S.NO at 1)
+                if (!baseName.includes("Ekip")) continue;
+
+                // Vardiya 1
+                const d1 = String(row[3] || "").trim();
+                const p1 = String(row[4] || "").trim();
+                if (isValidValue(row[3]) && d1 && d1 !== "null") {
+                  vehicles.push({
+                    name: `${baseName} (V1)`,
+                    plate: `${basePlate} (V1)`,
+                    type: "fixed",
+                    driverName: d1,
+                    phone: p1 || "Belirtilmedi",
+                    capacity: 4,
+                    notes: "Vardiya 1 Şoförü",
+                  });
+                }
+
+                // Vardiya 2
+                const d2 = String(row[5] || "").trim();
+                const p2 = String(row[6] || "").trim();
+                if (isValidValue(row[5]) && d2 && d2 !== "null") {
+                  vehicles.push({
+                    name: `${baseName} (V2)`,
+                    plate: `${basePlate} (V2)`,
+                    type: "fixed",
+                    driverName: d2,
+                    phone: p2 || "Belirtilmedi",
+                    capacity: 4,
+                    notes: "Vardiya 2 Şoförü",
+                  });
+                }
+
+                // Vardiya 3
+                const d3 = String(row[7] || "").trim();
+                const p3 = String(row[8] || "").trim();
+                if (isValidValue(row[7]) && d3 && d3 !== "null") {
+                  vehicles.push({
+                    name: `${baseName} (V3)`,
+                    plate: `${basePlate} (V3)`,
+                    type: "fixed",
+                    driverName: d3,
+                    phone: p3 || "Belirtilmedi",
+                    capacity: 4,
+                    notes: "Vardiya 3 Şoförü",
+                  });
+                }
               }
+            } else if (currentSection === "esnaf") {
+              const plate = String(row[2] || "").trim();
+              const driver = String(row[3] || "").trim();
+              const phone = String(row[4] || "").trim();
+              const shift = String(row[5] || "").trim();
 
-              // Vardiya 2
-              const d2 = String(row[5] || "").trim();
-              const p2 = String(row[6] || "").trim();
-              if (isValidValue(row[5]) && d2 && d2 !== "null") {
+              // Valid plate should start with a number (e.g. 06 ...) and have some length
+              if (plate && /^\d/.test(plate) && isValidValue(row[3]) && driver && driver !== "null") {
                 vehicles.push({
-                  name: `${baseName} (V2)`,
-                  plate: `${basePlate} (V2)`,
-                  type: "fixed",
-                  driverName: d2,
-                  phone: p2 || "Belirtilmedi",
+                  name: `Esnaf (${plate})`,
+                  plate: plate,
+                  type: "outsource",
+                  driverName: driver,
+                  phone: phone || "Belirtilmedi",
                   capacity: 4,
-                  notes: "Vardiya 2 Şoförü",
-                });
-              }
-
-              // Vardiya 3
-              const d3 = String(row[7] || "").trim();
-              const p3 = String(row[8] || "").trim();
-              if (isValidValue(row[7]) && d3 && d3 !== "null") {
-                vehicles.push({
-                  name: `${baseName} (V3)`,
-                  plate: `${basePlate} (V3)`,
-                  type: "fixed",
-                  driverName: d3,
-                  phone: p3 || "Belirtilmedi",
-                  capacity: 4,
-                  notes: "Vardiya 3 Şoförü",
+                  notes: shift ? `Esnaf Sefer Saatleri: ${shift}` : "Esnaf Araç",
                 });
               }
             }
