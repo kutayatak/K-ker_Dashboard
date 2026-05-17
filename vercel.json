@@ -1,7 +1,10 @@
 {
   "version": 2,
+  "buildCommand": "pnpm run build",
+  "outputDirectory": "artifacts/dispatch-dashboard/dist/public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
+
