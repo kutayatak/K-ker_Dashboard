@@ -26,6 +26,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
+import { tr } from "date-fns/locale";
 
 type TabKey = "queue" | "draft" | "assigned" | "in_progress" | "completed";
 
@@ -124,7 +125,7 @@ export function Board() {
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
-            Dispatch Board
+            Sevkiyat Paneli
           </h1>
           <p className="text-muted-foreground text-xs md:text-sm">Gerçek zamanlı terminal görünümü</p>
         </div>
@@ -140,7 +141,7 @@ export function Board() {
                 <span className="text-amber-600 font-medium text-xs">Simülasyon Modu</span>
               ) : (
                 <span className="text-emerald-600 font-medium text-xs flex items-center gap-1">
-                  <Wifi className="w-3 h-3" /> AviationStack
+                  <Wifi className="w-3 h-3" /> AirLabs API
                 </span>
               )}
               {lastUpdateCount !== null && (
@@ -151,7 +152,7 @@ export function Board() {
             </div>
             <span className="text-muted-foreground text-[11px]">
               {trackerStatus?.lastCheckedAt
-                ? `Son: ${formatDistanceToNow(new Date(trackerStatus.lastCheckedAt), { addSuffix: true })}`
+                ? `Son: ${formatDistanceToNow(new Date(trackerStatus.lastCheckedAt), { addSuffix: true, locale: tr })}`
                 : "Henüz kontrol edilmedi"}
             </span>
           </div>

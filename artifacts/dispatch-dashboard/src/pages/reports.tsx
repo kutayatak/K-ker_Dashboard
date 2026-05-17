@@ -12,11 +12,11 @@ export function Reports() {
 
   const exportToCSV = () => {
     if (!records.length) return;
-    const headers = ["ID", "Date", "Vehicle", "Task ID", "Amount", "Notes"];
+    const headers = ["ID", "Tarih", "Araç", "Görev ID", "Tutar", "Notlar"];
     const rows = records.map(r => [
       r.id,
       format(new Date(r.date), "yyyy-MM-dd HH:mm"),
-      r.vehicleName || `Vehicle ${r.vehicleId}`,
+      r.vehicleName || `Araç ${r.vehicleId}`,
       r.taskId,
       r.amount,
       r.notes || ""
@@ -31,7 +31,7 @@ export function Reports() {
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `accounting_export_${format(new Date(), 'yyyyMMdd')}.csv`);
+    link.setAttribute("download", `muhasebe_export_${format(new Date(), 'yyyyMMdd')}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -42,11 +42,11 @@ export function Reports() {
     <div className="h-full flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Accounting & Reports</h1>
-          <p className="text-muted-foreground text-sm">Revenue tracking and history</p>
+          <h1 className="text-2xl font-bold tracking-tight">Muhasebe & Raporlar</h1>
+          <p className="text-muted-foreground text-sm">Gelir takibi ve geçmişi</p>
         </div>
         <Button onClick={exportToCSV} variant="outline">
-          <Download className="w-4 h-4 mr-2" /> Export CSV
+          <Download className="w-4 h-4 mr-2" /> CSV Dışa Aktar
         </Button>
       </div>
 
@@ -58,7 +58,7 @@ export function Reports() {
                 {s.vehicleName}
               </div>
               <div className="text-2xl font-bold">${s.totalRevenue.toFixed(2)}</div>
-              <div className="text-xs text-muted-foreground mt-1">{s.tripCount} trips</div>
+              <div className="text-xs text-muted-foreground mt-1">{s.tripCount} sefer</div>
             </CardContent>
           </Card>
         ))}
@@ -69,21 +69,21 @@ export function Reports() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Vehicle</TableHead>
-                <TableHead>Task ID</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Notes</TableHead>
+                <TableHead>Tarih</TableHead>
+                <TableHead>Araç</TableHead>
+                <TableHead>Görev ID</TableHead>
+                <TableHead>Tutar</TableHead>
+                <TableHead>Notlar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">Loading records...</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8">Kayıtlar yükleniyor...</TableCell>
                 </TableRow>
               ) : records.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">No records found</TableCell>
+                  <TableCell colSpan={5} className="text-center py-8">Kayıt bulunamadı</TableCell>
                 </TableRow>
               ) : (
                 records.map(r => (

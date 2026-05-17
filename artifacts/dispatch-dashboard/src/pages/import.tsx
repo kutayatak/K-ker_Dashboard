@@ -66,7 +66,7 @@ export function ImportTasks() {
       }
     }, {
       onSuccess: () => {
-        alert("Import successful");
+        alert("İçe aktarma başarılı");
         setParsedTasks([]);
         setFileName(null);
       }
@@ -82,8 +82,8 @@ export function ImportTasks() {
   return (
     <div className="h-full flex flex-col gap-4">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Import Tasks</h1>
-        <p className="text-muted-foreground text-sm">Upload Excel or CSV file to batch create tasks</p>
+        <h1 className="text-2xl font-bold tracking-tight">Görevleri İçe Aktar</h1>
+        <p className="text-muted-foreground text-sm">Toplu görev oluşturmak için Excel veya CSV dosyası yükleyin</p>
       </div>
       
       {!fileName ? (
@@ -91,11 +91,11 @@ export function ImportTasks() {
           <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-4">
             <Upload size={24} />
           </div>
-          <h3 className="font-semibold text-lg mb-1">Upload File</h3>
-          <p className="text-sm text-muted-foreground mb-6">Support for .xlsx and .csv files</p>
+          <h3 className="font-semibold text-lg mb-1">Dosya Yükle</h3>
+          <p className="text-sm text-muted-foreground mb-6">.xlsx ve .csv dosyaları desteklenmektedir</p>
           <label className="cursor-pointer">
             <Button asChild>
-              <span>Browse Files</span>
+              <span>Dosyalara Göz At</span>
             </Button>
             <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} />
           </label>
@@ -107,23 +107,23 @@ export function ImportTasks() {
               <FileSpreadsheet className="text-green-600" />
               <div>
                 <div className="font-medium">{fileName}</div>
-                <div className="text-sm text-muted-foreground">{parsedTasks.length} tasks found</div>
+                <div className="text-sm text-muted-foreground">{parsedTasks.length} görev bulundu</div>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => { setFileName(null); setParsedTasks([]); }}>
-                <X className="w-4 h-4 mr-2" /> Cancel
+                <X className="w-4 h-4 mr-2" /> İptal
               </Button>
               <Button onClick={handleConfirm} disabled={importMutation.isPending || parsedTasks.length === 0}>
-                <Check className="w-4 h-4 mr-2" /> Confirm Import
+                <Check className="w-4 h-4 mr-2" /> İçe Aktarmayı Onayla
               </Button>
             </div>
           </Card>
           
           <div className="grid grid-cols-3 gap-4 flex-1 overflow-hidden">
-            <PreviewColumn title="Airport Runs" tasks={categories.airport_run} />
-            <PreviewColumn title="Hotel Pickups" tasks={categories.hotel_pickup} />
-            <PreviewColumn title="Extras" tasks={categories.extra} />
+            <PreviewColumn title="Havalimanı Seferleri" tasks={categories.airport_run} />
+            <PreviewColumn title="Otel Karşılamaları" tasks={categories.hotel_pickup} />
+            <PreviewColumn title="Ekstralar" tasks={categories.extra} />
           </div>
         </div>
       )}

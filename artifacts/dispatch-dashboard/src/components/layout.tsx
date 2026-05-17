@@ -18,10 +18,10 @@ export function AppSidebar() {
   const [location] = useLocation();
 
   const navigation = [
-    { name: "Dispatch Board", href: "/", icon: Plane },
-    { name: "Vehicles", href: "/vehicles", icon: Car },
-    { name: "Import Data", href: "/import", icon: Upload },
-    { name: "Reports", href: "/reports", icon: BarChart3 },
+    { name: "Sevkiyat Paneli", href: "/", icon: Plane },
+    { name: "Araçlar", href: "/vehicles", icon: Car },
+    { name: "Veri İçe Aktar", href: "/import", icon: Upload },
+    { name: "Raporlar", href: "/reports", icon: BarChart3 },
   ];
 
   return (
@@ -31,12 +31,12 @@ export function AppSidebar() {
           <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center text-white">
             <Plane size={18} />
           </div>
-          Dispatch Center
+          Sevkiyat Merkezi
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarGroupLabel>Operasyonlar</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navigation.map((item) => {
