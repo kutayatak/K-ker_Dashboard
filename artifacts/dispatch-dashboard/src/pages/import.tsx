@@ -204,7 +204,7 @@ export function ImportTasks() {
           }
           setParsedTasks(tasks);
         } else {
-          // Parse vehicles (first 15 Crew vehicles + Esnaf/outsource vehicles)
+          // Parse vehicles (first 15 Crew vehicles + Esnaf/outsource vehicles + VARDIYA + MEMUR)
           const vehicles: any[] = [];
           let currentSection: "crew" | "esnaf" = "crew";
 
@@ -220,62 +220,106 @@ export function ImportTasks() {
             }
 
             if (currentSection === "crew") {
-              const rawSno = row[0];
-              if (rawSno == null) continue;
-              const cleanSno = String(rawSno).replace(/\s/g, "");
-              const sno = Number(cleanSno);
+              const typeLabel = String(row[1] || "").trim();
+              const basePlate = String(row[2] || "").trim();
+              if (!basePlate || basePlate === "System.Xml.XmlElement") continue;
 
-              // Only accept the first 15 crew/task vehicles (S.NO 1 to 15)
-              if (!isNaN(sno) && sno >= 1 && sno <= 15) {
-                const baseName = String(row[1] || "").trim();
-                const basePlate = String(row[2] || "").trim();
-                if (!basePlate || basePlate === "System.Xml.XmlElement") continue;
+              if (typeLabel.includes("Ekip")) {
+                const rawSno = row[0];
+                if (rawSno == null) continue;
+                const cleanSno = String(rawSno).replace(/\s/g, "");
+                const sno = Number(cleanSno);
 
-                // Ensure it is indeed a Crew vehicle (skip MEMUR/VARDIYA/etc. that restart S.NO at 1)
-                if (!baseName.includes("Ekip")) continue;
+                // Only accept the first 15 crew/task vehicles (S.NO 1 to 15)
+                if (!isNaN(sno) && sno >= 1 && sno <= 15) {
+                  // Vardiya 1
+                  const d1 = String(row[3] || "").trim();
+                  const p1 = String(row[4] || "").trim();
+                  if (isValidValue(row[3]) && d1 && d1 !== "null") {
+                    vehicles.push({
+                      name: `${typeLabel} (V1)`,
+                      plate: `${basePlate} (V1)`,
+                      type: "fixed",
+                      driverName: d1,
+                      phone: p1 || "Belirtilmedi",
+                      capacity: 4,
+                      notes: "Vardiya 1 Şoförü",
+                    });
+                  }
 
+                  // Vardiya 2
+                  const d2 = String(row[5] || "").trim();
+                  const p2 = String(row[6] || "").trim();
+                  if (isValidValue(row[5]) && d2 && d2 !== "null") {
+                    vehicles.push({
+                      name: `${typeLabel} (V2)`,
+                      plate: `${basePlate} (V2)`,
+                      type: "fixed",
+                      driverName: d2,
+                      phone: p2 || "Belirtilmedi",
+                      capacity: 4,
+                      notes: "Vardiya 2 Şoförü",
+                    });
+                  }
+
+                  // Vardiya 3
+                  const d3 = String(row[7] || "").trim();
+                  const p3 = String(row[8] || "").trim();
+                  if (isValidValue(row[7]) && d3 && d3 !== "null") {
+                    vehicles.push({
+                      name: `${typeLabel} (V3)`,
+                      plate: `${basePlate} (V3)`,
+                      type: "fixed",
+                      driverName: d3,
+                      phone: p3 || "Belirtilmedi",
+                      capacity: 4,
+                      notes: "Vardiya 3 Şoförü",
+                    });
+                  }
+                }
+              } else if (typeLabel === "VARDIYA") {
                 // Vardiya 1
                 const d1 = String(row[3] || "").trim();
                 const p1 = String(row[4] || "").trim();
-                if (isValidValue(row[3]) && d1 && d1 !== "null") {
+                if (isValidValue(row[3]) && d1 && d1 !== "null" && !d1.includes("İZİNLİ")) {
                   vehicles.push({
-                    name: `${baseName} (V1)`,
+                    name: `Vardiya (${basePlate}) V1`,
                     plate: `${basePlate} (V1)`,
                     type: "fixed",
                     driverName: d1,
                     phone: p1 || "Belirtilmedi",
                     capacity: 4,
-                    notes: "Vardiya 1 Şoförü",
+                    notes: "Vardiya Aracı - Vardiya 1",
                   });
                 }
 
                 // Vardiya 2
                 const d2 = String(row[5] || "").trim();
                 const p2 = String(row[6] || "").trim();
-                if (isValidValue(row[5]) && d2 && d2 !== "null") {
+                if (isValidValue(row[5]) && d2 && d2 !== "null" && !d2.includes("İZİNLİ")) {
                   vehicles.push({
-                    name: `${baseName} (V2)`,
+                    name: `Vardiya (${basePlate}) V2`,
                     plate: `${basePlate} (V2)`,
                     type: "fixed",
                     driverName: d2,
                     phone: p2 || "Belirtilmedi",
                     capacity: 4,
-                    notes: "Vardiya 2 Şoförü",
+                    notes: "Vardiya Aracı - Vardiya 2",
                   });
                 }
-
-                // Vardiya 3
-                const d3 = String(row[7] || "").trim();
-                const p3 = String(row[8] || "").trim();
-                if (isValidValue(row[7]) && d3 && d3 !== "null") {
+              } else if (typeLabel === "MEMUR") {
+                const d1 = String(row[3] || "").trim();
+                const p1 = String(row[4] || "").trim();
+                const loc = String(row[5] || "").trim();
+                if (isValidValue(row[3]) && d1 && d1 !== "null") {
                   vehicles.push({
-                    name: `${baseName} (V3)`,
-                    plate: `${basePlate} (V3)`,
+                    name: `Memur (${basePlate})`,
+                    plate: basePlate,
                     type: "fixed",
-                    driverName: d3,
-                    phone: p3 || "Belirtilmedi",
+                    driverName: d1,
+                    phone: p1 || "Belirtilmedi",
                     capacity: 4,
-                    notes: "Vardiya 3 Şoförü",
+                    notes: loc && loc !== "System.Xml.XmlElement" ? `Memur Aracı - Semt: ${loc}` : "Memur Aracı",
                   });
                 }
               }

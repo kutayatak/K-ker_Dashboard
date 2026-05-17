@@ -3,12 +3,11 @@ import { useListVehicles, useCreateVehicle, useUpdateVehicle, useDeleteVehicle, 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit2, Trash2 } from "lucide-react";
+import { Plus, Edit2, Trash2, Phone, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function Vehicles() {
@@ -21,6 +20,64 @@ export function Vehicles() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState<any>(null);
+
+  const isValidValue = (val: any) => {
+    if (val == null) return false;
+    const str = String(val).trim();
+    return str !== "" && str !== "System.Xml.XmlElement";
+  };
+
+  // Group vehicles by base plate
+  const groupedVehicles = vehicles.reduce<any[]>((acc, v) => {
+    let basePlate = v.plate;
+    let shiftLabel = "Şoför";
+    
+    const vMatch = v.plate.match(/^(.*?)\s*\(V(\d)\)$/);
+    if (vMatch) {
+      basePlate = vMatch[1];
+      shiftLabel = `Vardiya ${vMatch[2]}`;
+    } else if (v.notes?.includes("Vardiya 1")) {
+      shiftLabel = "Vardiya 1";
+    } else if (v.notes?.includes("Vardiya 2")) {
+      shiftLabel = "Vardiya 2";
+    } else if (v.notes?.includes("Vardiya 3")) {
+      shiftLabel = "Vardiya 3";
+    } else if (v.type === "outsource") {
+      shiftLabel = "Esnaf";
+    } else if (v.name?.includes("Memur")) {
+      shiftLabel = "Memur";
+    }
+
+    let group = acc.find(g => g.basePlate === basePlate);
+    if (!group) {
+      group = {
+        basePlate,
+        baseName: v.name.replace(/\s*\(V\d\)$/, ""),
+        type: v.type,
+        capacity: v.capacity,
+        status: v.status,
+        queuePosition: v.queuePosition,
+        shifts: []
+      };
+      acc.push(group);
+    }
+    
+    group.shifts.push({
+      id: v.id,
+      label: shiftLabel,
+      driverName: v.driverName,
+      phone: v.phone,
+      notes: v.notes,
+      raw: v
+    });
+    
+    return acc;
+  }, []);
+
+  // Sort shifts inside each group
+  groupedVehicles.forEach(g => {
+    g.shifts.sort((a: any, b: any) => a.label.localeCompare(b.label, "tr"));
+  });
 
   const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -126,65 +183,91 @@ export function Vehicles() {
         </Dialog>
       </div>
 
-      <Card className="flex-1 overflow-hidden flex flex-col">
-        <div className="overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plaka</TableHead>
-                <TableHead>Araç Modeli/Adı</TableHead>
-                <TableHead>Tür</TableHead>
-                <TableHead>Şoför</TableHead>
-                <TableHead>Telefon</TableHead>
-                <TableHead>Durum</TableHead>
-                <TableHead>Kuyruk</TableHead>
-                <TableHead className="text-right">İşlemler</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">Araçlar yükleniyor...</TableCell>
-                </TableRow>
-              ) : vehicles.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">Araç bulunamadı</TableCell>
-                </TableRow>
-              ) : (
-                vehicles.map(v => (
-                  <TableRow key={v.id} className={v.type === 'outsource' ? 'bg-amber-50/10' : ''}>
-                    <TableCell className="font-mono font-medium">{v.plate}</TableCell>
-                    <TableCell>{v.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={v.type === 'fixed' ? 'default' : 'outline'} className={v.type === 'outsource' ? 'border-dashed border-amber-400 text-amber-700' : ''}>
-                        {v.type === 'fixed' ? 'Sabit' : 'Esnaf'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{v.driverName}</TableCell>
-                    <TableCell>{v.phone}</TableCell>
-                    <TableCell>
-                      <Badge variant={v.status === 'empty' ? 'secondary' : v.status === 'busy' ? 'default' : 'destructive'}>
-                        {v.status === 'empty' ? 'Boş' : v.status === 'busy' ? 'Dolu' : 'Çevrimdışı'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {v.queuePosition ? <span className="font-mono">#{v.queuePosition}</span> : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => setEditingVehicle(v)}>
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)} className="text-red-500">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+      {/* Premium Grouped Vehicles Cards Grid */}
+      <div className="flex-1 overflow-auto pr-1">
+        {isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Araçlar yükleniyor...</div>
+        ) : groupedVehicles.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">Araç bulunamadı</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {groupedVehicles.map((g: any) => (
+              <Card key={g.basePlate} className="flex flex-col hover:shadow-lg transition-all duration-200 border-t-4 border-t-primary/80 overflow-hidden bg-card/60 backdrop-blur-sm">
+                
+                {/* Card Header */}
+                <div className="p-5 border-b border-border flex items-start justify-between bg-muted/20">
+                  <div className="space-y-2">
+                    <h3 className="font-bold text-lg tracking-tight line-clamp-1">{g.baseName}</h3>
+                    
+                    {/* Miniature Turkish License Plate */}
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 border border-slate-300 rounded font-mono text-xs font-bold bg-white text-slate-800 shadow-sm select-none">
+                      <span className="text-[10px] text-blue-600 font-extrabold border-r border-slate-200 pr-1.5 py-0.5">TR</span>
+                      {g.basePlate}
+                    </div>
+                  </div>
+
+                  <Badge variant={g.type === 'fixed' ? 'default' : 'outline'} className={g.type === 'outsource' ? 'border-dashed border-amber-400 text-amber-700 bg-amber-50/50' : 'bg-primary/90 text-primary-foreground'}>
+                    {g.type === 'fixed' ? 'Sabit' : 'Esnaf'}
+                  </Badge>
+                </div>
+
+                {/* Card Body - Driver & Shifts List */}
+                <div className="p-5 flex-1 flex flex-col gap-4">
+                  <div className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Şoförler & Vardiyalar</div>
+                  
+                  <div className="space-y-3 flex-1">
+                    {g.shifts.map((s: any) => (
+                      <div key={s.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors group/row">
+                        <div className="space-y-1 flex-1 min-w-0 mr-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground tracking-wide font-mono uppercase shrink-0">{s.label}</span>
+                            <span className="font-semibold text-sm text-foreground truncate">{s.driverName}</span>
+                          </div>
+                          
+                          {s.phone && s.phone !== "Belirtilmedi" && (
+                            <a href={`tel:${s.phone.replace(/\s+/g, '')}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mt-1 font-mono">
+                              <Phone className="w-3 h-3 text-muted-foreground/70" />
+                              {s.phone}
+                            </a>
+                          )}
+                          
+                          {s.notes && s.notes !== "Vardiya 1 Şoförü" && s.notes !== "Vardiya 2 Şoförü" && s.notes !== "Vardiya 3 Şoförü" && s.notes !== "Esnaf Araç" && (
+                            <div className="text-[11px] text-muted-foreground/80 italic mt-0.5 truncate">{s.notes}</div>
+                          )}
+                        </div>
+
+                        {/* Shift Edit/Delete Actions */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setEditingVehicle(s.raw)}>
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-600" onClick={() => handleDelete(s.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Card Footer */}
+                <div className="p-4 bg-muted/30 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-muted-foreground/70" />
+                    <span>Kapasite: {g.capacity} Kişi</span>
+                  </div>
+                  {g.queuePosition && (
+                    <div className="flex items-center gap-1 font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-semibold">
+                      <span>Sıra: #{g.queuePosition}</span>
+                    </div>
+                  )}
+                </div>
+
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Dialog open={!!editingVehicle} onOpenChange={() => setEditingVehicle(null)}>
         <DialogContent>
