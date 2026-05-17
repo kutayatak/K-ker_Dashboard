@@ -65,10 +65,21 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex w-full h-screen overflow-hidden">
       <AppSidebar />
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
-        <header className="h-14 border-b bg-card flex items-center px-4 shrink-0">
-          <SidebarTrigger />
+        <header className="h-14 border-b bg-card flex items-center justify-between px-4 shrink-0 md:hidden">
+          <div className="flex items-center gap-3">
+            <SidebarTrigger />
+            <div className="flex items-center gap-2 font-bold text-sm text-sidebar-primary">
+              <div className="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white">
+                <Plane size={14} />
+              </div>
+              K-ker Dashboard
+            </div>
+          </div>
         </header>
-        <div className="flex-1 overflow-auto p-3 md:p-6">
+        <div className="hidden md:flex h-14 border-b bg-card items-center px-4 shrink-0">
+          <SidebarTrigger />
+        </div>
+        <div className="flex-1 overflow-auto p-3 md:p-6 pb-24 md:pb-6">
           {children}
         </div>
       </main>

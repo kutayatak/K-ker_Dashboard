@@ -128,7 +128,7 @@ export function Vehicles() {
 
   return (
     <div className="h-full flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Araç Yönetimi</h1>
           <p className="text-muted-foreground text-sm">Filo ve esnaf (dış kaynak) şoförlerini yönetin</p>
@@ -136,7 +136,7 @@ export function Vehicles() {
 
         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
-            <Button><Plus className="w-4 h-4 mr-2" /> Araç Ekle</Button>
+            <Button className="w-full sm:w-auto"><Plus className="w-4 h-4 mr-2" /> Araç Ekle</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -217,8 +217,8 @@ export function Vehicles() {
                   
                   <div className="space-y-3 flex-1">
                     {g.shifts.map((s: any) => (
-                      <div key={s.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors group/row">
-                        <div className="space-y-1 flex-1 min-w-0 mr-2">
+                      <div key={s.id} className="flex flex-col md:flex-row md:items-center justify-between p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors group/row gap-3 md:gap-0">
+                        <div className="space-y-1 flex-1 min-w-0 md:mr-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground tracking-wide font-mono uppercase shrink-0">{s.label}</span>
                             <span className="font-semibold text-sm text-foreground truncate">{s.driverName}</span>
@@ -237,12 +237,12 @@ export function Vehicles() {
                         </div>
 
                         {/* Shift Edit/Delete Actions */}
-                        <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => setEditingVehicle(s.raw)}>
-                            <Edit2 className="w-3.5 h-3.5" />
+                        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover/row:opacity-100 transition-opacity mt-2 md:mt-0 justify-end md:justify-start border-t md:border-none pt-2 md:pt-0">
+                          <Button variant="ghost" size="icon" className="w-8 h-8 md:w-7 md:h-7" onClick={() => setEditingVehicle(s.raw)}>
+                            <Edit2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-600" onClick={() => handleDelete(s.id)}>
-                            <Trash2 className="w-3.5 h-3.5" />
+                          <Button variant="ghost" size="icon" className="w-8 h-8 md:w-7 md:h-7 text-red-500 hover:text-red-600" onClick={() => handleDelete(s.id)}>
+                            <Trash2 className="w-4 h-4 md:w-3.5 md:h-3.5" />
                           </Button>
                         </div>
                       </div>

@@ -473,7 +473,7 @@ export function ImportTasks() {
         </Card>
       ) : (
         <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-          <Card className="p-4 flex items-center justify-between shrink-0">
+          <Card className="p-4 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shrink-0">
             <div className="flex items-center gap-3">
               <FileSpreadsheet className="text-green-600" />
               <div>
@@ -496,7 +496,7 @@ export function ImportTasks() {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end w-full sm:w-auto gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
