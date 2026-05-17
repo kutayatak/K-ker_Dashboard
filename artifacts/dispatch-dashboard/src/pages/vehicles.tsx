@@ -251,17 +251,13 @@ export function Vehicles() {
                 </div>
 
                 {/* Card Footer */}
-                <div className="p-4 bg-muted/30 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5 text-muted-foreground/70" />
-                    <span>Kapasite: {g.capacity} Kişi</span>
-                  </div>
-                  {g.queuePosition && (
+                {g.queuePosition && (
+                  <div className="p-3 bg-muted/30 border-t border-border flex items-center justify-end text-xs text-muted-foreground">
                     <div className="flex items-center gap-1 font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-semibold">
                       <span>Sıra: #{g.queuePosition}</span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
               </Card>
             ))}
