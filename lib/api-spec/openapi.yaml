@@ -1,22 +1,29 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Smart Dispatch Dashboard API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: vehicles
+    description: Vehicle and driver management
+  - name: tasks
+    description: Dispatch task management
+  - name: accounting
+    description: Accounting and revenue records
+  - name: webhook
+    description: WhatsApp webhook endpoints
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +31,342 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── VEHICLES ──────────────────────────────────────────────────────────────
+  /vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List all vehicles
+      parameters:
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [fixed, outsource]
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [empty, busy, offline]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vehicle"
+    post:
+      operationId: createVehicle
+      tags: [vehicles]
+      summary: Create a vehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+
+  /vehicles/queue:
+    get:
+      operationId: getVehicleQueue
+      tags: [vehicles]
+      summary: Get FIFO vehicle queue (empty vehicles ordered by queue position)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vehicle"
+
+  /vehicles/{id}:
+    get:
+      operationId: getVehicle
+      tags: [vehicles]
+      summary: Get a vehicle by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateVehicle
+      tags: [vehicles]
+      summary: Update a vehicle
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+    delete:
+      operationId: deleteVehicle
+      tags: [vehicles]
+      summary: Delete a vehicle
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── TASKS ─────────────────────────────────────────────────────────────────
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [draft, assigned, in_progress, completed, cancelled]
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [hotel_pickup, airport_run, extra]
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/summary:
+    get:
+      operationId: getTasksSummary
+      tags: [tasks]
+      summary: Dashboard summary — counts by status and type
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TasksSummary"
+
+  /tasks/import:
+    post:
+      operationId: importTasks
+      tags: [tasks]
+      summary: Bulk import tasks from parsed Excel data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskImport"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /tasks/batch-notify:
+    post:
+      operationId: batchNotifyTasks
+      tags: [tasks]
+      summary: Send WhatsApp notifications for selected draft tasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchNotify"
+      responses:
+        "200":
+          description: Notification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchNotifyResult"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a task by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task (assign vehicle, change status, update flight time)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── ACCOUNTING ────────────────────────────────────────────────────────────
+  /accounting:
+    get:
+      operationId: listAccountingRecords
+      tags: [accounting]
+      summary: List accounting records
+      parameters:
+        - in: query
+          name: vehicleId
+          schema:
+            type: integer
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountingRecord"
+
+  /accounting/summary:
+    get:
+      operationId: getAccountingSummary
+      tags: [accounting]
+      summary: Revenue summary grouped by vehicle
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VehicleRevenue"
+
+  # ── WEBHOOK ───────────────────────────────────────────────────────────────
+  /webhook/whatsapp:
+    post:
+      operationId: whatsappWebhook
+      tags: [webhook]
+      summary: Handle WhatsApp button response from driver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppWebhookPayload"
+      responses:
+        "200":
+          description: Processed
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +377,288 @@ components:
       required:
         - status
 
+    # ── VEHICLE ──────────────────────────────────────────────────────────────
+    Vehicle:
+      type: object
+      required: [id, name, plate, type, status, driverName, phone, queuePosition, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        plate:
+          type: string
+        type:
+          type: string
+          enum: [fixed, outsource]
+        status:
+          type: string
+          enum: [empty, busy, offline]
+        driverName:
+          type: string
+        phone:
+          type: string
+        capacity:
+          type: integer
+        queuePosition:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    VehicleInput:
+      type: object
+      required: [name, plate, type, driverName, phone]
+      properties:
+        name:
+          type: string
+        plate:
+          type: string
+        type:
+          type: string
+          enum: [fixed, outsource]
+        driverName:
+          type: string
+        phone:
+          type: string
+        capacity:
+          type: integer
+        notes:
+          type: string
+
+    VehicleUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        plate:
+          type: string
+        status:
+          type: string
+          enum: [empty, busy, offline]
+        driverName:
+          type: string
+        phone:
+          type: string
+        capacity:
+          type: integer
+        queuePosition:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+
+    # ── TASK ─────────────────────────────────────────────────────────────────
+    Task:
+      type: object
+      required: [id, type, status, pickupLocation, dropoffLocation, scheduledTime, passengerCount, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [hotel_pickup, airport_run, extra]
+        status:
+          type: string
+          enum: [draft, assigned, in_progress, completed, cancelled]
+        flightCode:
+          type: ["string", "null"]
+        passengerCount:
+          type: integer
+        pickupLocation:
+          type: string
+        dropoffLocation:
+          type: string
+        scheduledTime:
+          type: string
+          format: date-time
+        actualPickupTime:
+          type: ["string", "null"]
+          format: date-time
+        actualDropoffTime:
+          type: ["string", "null"]
+          format: date-time
+        vehicleId:
+          type: ["integer", "null"]
+        vehicleName:
+          type: ["string", "null"]
+        driverName:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        fee:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    TaskInput:
+      type: object
+      required: [type, pickupLocation, dropoffLocation, scheduledTime, passengerCount]
+      properties:
+        type:
+          type: string
+          enum: [hotel_pickup, airport_run, extra]
+        flightCode:
+          type: string
+        passengerCount:
+          type: integer
+        pickupLocation:
+          type: string
+        dropoffLocation:
+          type: string
+        scheduledTime:
+          type: string
+          format: date-time
+        vehicleId:
+          type: integer
+        notes:
+          type: string
+        fee:
+          type: number
+
+    TaskUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, assigned, in_progress, completed, cancelled]
+        vehicleId:
+          type: ["integer", "null"]
+        flightCode:
+          type: string
+        passengerCount:
+          type: integer
+        pickupLocation:
+          type: string
+        dropoffLocation:
+          type: string
+        scheduledTime:
+          type: string
+          format: date-time
+        actualPickupTime:
+          type: ["string", "null"]
+          format: date-time
+        actualDropoffTime:
+          type: ["string", "null"]
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        fee:
+          type: ["number", "null"]
+
+    TaskImport:
+      type: object
+      required: [tasks]
+      properties:
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskInput"
+
+    ImportResult:
+      type: object
+      required: [created, skipped]
+      properties:
+        created:
+          type: integer
+        skipped:
+          type: integer
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+
+    BatchNotify:
+      type: object
+      required: [taskIds]
+      properties:
+        taskIds:
+          type: array
+          items:
+            type: integer
+
+    BatchNotifyResult:
+      type: object
+      required: [sent, failed]
+      properties:
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    TasksSummary:
+      type: object
+      required: [total, draft, assigned, inProgress, completed, cancelled, hotelPickups, airportRuns, extras, todayCompleted, todayRevenue]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        assigned:
+          type: integer
+        inProgress:
+          type: integer
+        completed:
+          type: integer
+        cancelled:
+          type: integer
+        hotelPickups:
+          type: integer
+        airportRuns:
+          type: integer
+        extras:
+          type: integer
+        todayCompleted:
+          type: integer
+        todayRevenue:
+          type: number
+
+    # ── ACCOUNTING ────────────────────────────────────────────────────────────
+    AccountingRecord:
+      type: object
+      required: [id, vehicleId, taskId, amount, date, createdAt]
+      properties:
+        id:
+          type: integer
+        vehicleId:
+          type: integer
+        vehicleName:
+          type: ["string", "null"]
+        taskId:
+          type: integer
+        amount:
+          type: number
+        date:
+          type: string
+          format: date
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    VehicleRevenue:
+      type: object
+      required: [vehicleId, vehicleName, totalRevenue, tripCount]
+      properties:
+        vehicleId:
+          type: integer
+        vehicleName:
+          type: string
+        driverName:
+          type: string
+        totalRevenue:
+          type: number
+        tripCount:
+          type: integer
+
+    # ── WEBHOOK ───────────────────────────────────────────────────────────────
+    WhatsAppWebhookPayload:
+      type: object
+      properties:
+        entry:
+          type: array
+          items:
+            type: object
