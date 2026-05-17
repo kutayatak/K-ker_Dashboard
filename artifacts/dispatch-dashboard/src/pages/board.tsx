@@ -7,6 +7,8 @@ import {
   getListTasksQueryKey,
   getGetFlightTrackerStatusQueryKey,
   type Task,
+  useListVehicles,
+  useUpdateVehicle,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,8 @@ import {
   Wifi,
   Car,
   ExternalLink,
+  Plus,
+  GripVertical,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -45,6 +49,92 @@ export function Board() {
   const { data: queue = [] } = useGetVehicleQueue({
     query: { queryKey: ["/api/vehicles/queue"] },
   });
+  const { data: vehicles = [] } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
+  const updateVehicleMutation = useUpdateVehicle();
+
+  const [localQueue, setLocalQueue] = useState<any[]>([]);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+
+  useEffect(() => {
+    setLocalQueue(queue);
+  }, [queue]);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const items = [...localQueue];
+    const draggedItem = items[draggedIndex];
+    items.splice(draggedIndex, 1);
+    items.splice(index, 0, draggedItem);
+
+    setDraggedIndex(index);
+    setLocalQueue(items);
+  };
+
+  const handleDragEnd = async () => {
+    setDraggedIndex(null);
+    const ids = localQueue.map((v) => v.id);
+
+    try {
+      const res = await fetch("/api/vehicles/queue/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+      }
+    } catch (err) {
+      console.error("Queue reorder failed:", err);
+    }
+  };
+
+  const handleRemoveFromQueue = (vehicleId: number) => {
+    updateVehicleMutation.mutate({
+      id: vehicleId,
+      data: {
+        status: "offline",
+        queuePosition: null,
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+      }
+    });
+  };
+
+  const handleAddToQueue = () => {
+    if (!selectedVehicleId) return;
+    const vId = Number(selectedVehicleId);
+    const maxPos = queue.reduce((max: number, v: any) => Math.max(max, v.queuePosition ?? 0), 0);
+    
+    updateVehicleMutation.mutate({
+      id: vId,
+      data: {
+        status: "empty",
+        queuePosition: maxPos + 1,
+      }
+    }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+        setIsAddOpen(false);
+        setSelectedVehicleId("");
+      }
+    });
+  };
+
+  // Filter vehicles that are not in the queue
+  const availableVehicles = vehicles.filter(
+    (v: any) => !v.queuePosition || v.status !== "empty"
+  );
   const { data: tasks = [] } = useListTasks(
     {},
     { query: { queryKey: getListTasksQueryKey() } }
@@ -213,12 +303,30 @@ export function Board() {
             <h2 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
               Kuyruk
             </h2>
-            <Badge variant="secondary" className="font-mono text-[11px] px-1.5">
-              {queue.length}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-6 h-6 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                onClick={() => setIsAddOpen(true)}
+                title="Kuyruğa Araç Ekle"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+              <Badge variant="secondary" className="font-mono text-[11px] px-1.5">
+                {queue.length}
+              </Badge>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto space-y-2 pb-4 pr-1">
-            <QueueList queue={queue} />
+            <QueueList
+              queue={localQueue}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onRemove={handleRemoveFromQueue}
+            />
+            {queue.length === 0 && <div className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-lg">Kuyruk boş</div>}
           </div>
         </div>
 
@@ -240,7 +348,19 @@ export function Board() {
         <div className="flex md:hidden flex-1 flex-col overflow-hidden min-h-0">
           {activeTab === "queue" && (
             <div className="flex-1 overflow-y-auto space-y-2 pb-24">
-              <QueueList queue={queue} />
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kuyruk Yönetimi</span>
+                <Button size="sm" onClick={() => setIsAddOpen(true)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Araç Ekle
+                </Button>
+              </div>
+              <QueueList
+                queue={localQueue}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragEnd={handleDragEnd}
+                onRemove={handleRemoveFromQueue}
+              />
               {queue.length === 0 && <EmptyState text="Kuyruk boş" />}
             </div>
           )}
@@ -323,47 +443,115 @@ export function Board() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Manual Queue Addition Dialog */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle>Kuyruğa Şoför / Araç Ekle</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Kuyruğa manuel olarak eklemek istediğiniz şoförü ve aracını seçin:
+            </p>
+            
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şoför Seçin</label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={selectedVehicleId}
+                onChange={(e) => setSelectedVehicleId(e.target.value)}
+              >
+                <option value="">Şoför / Araç Seçin...</option>
+                {availableVehicles.map((v: any) => (
+                  <option key={v.id} value={v.id}>
+                    {v.plate} — {v.driverName} ({v.name})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setIsAddOpen(false)}>İptal</Button>
+              <Button onClick={handleAddToQueue} disabled={!selectedVehicleId}>Kuyruğa Ekle</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 /* ── Queue list (shared between desktop sidebar and mobile tab) ─────────── */
-function QueueList({ queue }: { queue: any[] }) {
+function QueueList({
+  queue,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onRemove,
+}: {
+  queue: any[];
+  onDragStart: (index: number) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragEnd: () => void;
+  onRemove: (id: number) => void;
+}) {
   if (!queue.length) return null;
   return (
-    <>
-      {queue.map((v) => (
+    <div className="space-y-2 select-none">
+      {queue.map((v, idx) => (
         <div
           key={v.id}
-          className={`rounded-lg p-3 text-sm border ${
+          draggable
+          onDragStart={() => onDragStart(idx)}
+          onDragOver={(e) => onDragOver(e, idx)}
+          onDragEnd={onDragEnd}
+          className={`rounded-lg p-3 text-sm border cursor-grab active:cursor-grabbing transition-all duration-150 flex flex-col gap-1.5 relative group/qitem hover:border-primary/40 ${
             v.type === "outsource"
               ? "border-dashed border-amber-300 bg-amber-50/40"
-              : "border bg-card"
+              : "border bg-card hover:bg-muted/10"
           }`}
         >
+          {/* Grab handle and content */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <Car className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <span className="font-mono text-xs tracking-wide truncate">{v.plate}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <GripVertical className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0 cursor-grab" />
+              <span className="font-mono text-xs tracking-wide truncate font-bold text-foreground">{v.plate}</span>
             </div>
-            <Badge
-              variant="secondary"
-              className="font-mono bg-blue-100 text-blue-800 text-[11px] px-1.5 shrink-0"
-            >
-              #{v.queuePosition}
-            </Badge>
+            
+            <div className="flex items-center gap-1 shrink-0">
+              <Badge
+                variant="secondary"
+                className="font-mono bg-blue-100 text-blue-800 text-[10px] px-1 py-0 rounded shrink-0 font-extrabold"
+              >
+                #{idx + 1}
+              </Badge>
+              
+              {/* Manual Remove from Queue */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRemove(v.id);
+                }}
+                className="w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 flex items-center justify-center opacity-0 group-hover/qitem:opacity-100 transition-opacity"
+                title="Kuyruktan Çıkar"
+              >
+                <Plus className="w-3.5 h-3.5 rotate-45 text-red-500" />
+              </button>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-1 truncate pl-5">
+          
+          <div className="text-xs text-muted-foreground pl-5 truncate font-medium">
             {v.name} &bull; {v.driverName}
           </div>
           {v.type === "outsource" && (
-            <div className="text-[10px] text-amber-600 font-semibold mt-0.5 pl-5 uppercase tracking-wide">
+            <div className="text-[9px] text-amber-700 font-extrabold mt-0.5 pl-5 uppercase tracking-wider">
               Esnaf
             </div>
           )}
         </div>
       ))}
-    </>
+    </div>
   );
 }
 

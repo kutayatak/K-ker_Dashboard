@@ -41,6 +41,33 @@ router.get("/queue", async (_req, res) => {
   return res.json(queue);
 });
 
+// POST /vehicles/queue/reorder
+router.post("/queue/reorder", async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "Invalid body, ids must be an array" });
+
+  try {
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < ids.length; i++) {
+        await tx
+          .update(vehiclesTable)
+          .set({ queuePosition: i + 1, status: "empty" })
+          .where(eq(vehiclesTable.id, ids[i]));
+      }
+    });
+
+    const queue = await db
+      .select()
+      .from(vehiclesTable)
+      .where(eq(vehiclesTable.status, "empty"))
+      .orderBy(asc(vehiclesTable.queuePosition));
+
+    return res.json(queue);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /vehicles
 router.post("/", async (req, res) => {
   const parsed = CreateVehicleBody.safeParse(req.body);
