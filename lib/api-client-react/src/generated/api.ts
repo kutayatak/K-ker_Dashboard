@@ -23,6 +23,8 @@ import type {
   AccountingRecord,
   BatchNotify,
   BatchNotifyResult,
+  FlightCheckResult,
+  FlightTrackerStatus,
   HealthStatus,
   ImportResult,
   ListAccountingRecordsParams,
@@ -1322,6 +1324,153 @@ export function useGetAccountingSummary<TData = Awaited<ReturnType<typeof getAcc
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetAccountingSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCheckFlightDelaysUrl = () => {
+
+
+
+
+  return `/api/flights/check`
+}
+
+/**
+ * @summary Check delays for all today's tasks with flight codes and update scheduled times
+ */
+export const checkFlightDelays = async ( options?: RequestInit): Promise<FlightCheckResult> => {
+
+  return customFetch<FlightCheckResult>(getCheckFlightDelaysUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCheckFlightDelaysMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkFlightDelays>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkFlightDelays>>, TError,void, TContext> => {
+
+const mutationKey = ['checkFlightDelays'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkFlightDelays>>, void> = () => {
+
+
+          return  checkFlightDelays(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckFlightDelaysMutationResult = NonNullable<Awaited<ReturnType<typeof checkFlightDelays>>>
+
+    export type CheckFlightDelaysMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Check delays for all today's tasks with flight codes and update scheduled times
+ */
+export const useCheckFlightDelays = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkFlightDelays>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkFlightDelays>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCheckFlightDelaysMutationOptions(options));
+    }
+
+export const getGetFlightTrackerStatusUrl = () => {
+
+
+
+
+  return `/api/flights/status`
+}
+
+/**
+ * @summary Get flight tracker status (last check time, API configured)
+ */
+export const getFlightTrackerStatus = async ( options?: RequestInit): Promise<FlightTrackerStatus> => {
+
+  return customFetch<FlightTrackerStatus>(getGetFlightTrackerStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFlightTrackerStatusQueryKey = () => {
+    return [
+    `/api/flights/status`
+    ] as const;
+    }
+
+
+export const getGetFlightTrackerStatusQueryOptions = <TData = Awaited<ReturnType<typeof getFlightTrackerStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlightTrackerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFlightTrackerStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFlightTrackerStatus>>> = ({ signal }) => getFlightTrackerStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFlightTrackerStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFlightTrackerStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getFlightTrackerStatus>>>
+export type GetFlightTrackerStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get flight tracker status (last check time, API configured)
+ */
+
+export function useGetFlightTrackerStatus<TData = Awaited<ReturnType<typeof getFlightTrackerStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFlightTrackerStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFlightTrackerStatusQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

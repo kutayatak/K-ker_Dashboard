@@ -351,6 +351,33 @@ paths:
                 items:
                   $ref: "#/components/schemas/VehicleRevenue"
 
+  # ── FLIGHTS ───────────────────────────────────────────────────────────────
+  /flights/check:
+    post:
+      operationId: checkFlightDelays
+      tags: [flights]
+      summary: Check delays for all today's tasks with flight codes and update scheduled times
+      responses:
+        "200":
+          description: Flight check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlightCheckResult"
+
+  /flights/status:
+    get:
+      operationId: getFlightTrackerStatus
+      tags: [flights]
+      summary: Get flight tracker status (last check time, API configured)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlightTrackerStatus"
+
   # ── WEBHOOK ───────────────────────────────────────────────────────────────
   /webhook/whatsapp:
     post:
@@ -652,6 +679,60 @@ components:
         totalRevenue:
           type: number
         tripCount:
+          type: integer
+
+    # ── FLIGHTS ───────────────────────────────────────────────────────────────
+    FlightDelayUpdate:
+      type: object
+      required: [taskId, flightCode, previousTime, updatedTime, delayMinutes]
+      properties:
+        taskId:
+          type: integer
+        flightCode:
+          type: string
+        previousTime:
+          type: string
+          format: date-time
+        updatedTime:
+          type: string
+          format: date-time
+        delayMinutes:
+          type: integer
+        flightStatus:
+          type: string
+
+    FlightCheckResult:
+      type: object
+      required: [checkedFlights, updatedTasks, simulationMode, checkedAt]
+      properties:
+        checkedFlights:
+          type: integer
+        updatedTasks:
+          type: integer
+        simulationMode:
+          type: boolean
+        checkedAt:
+          type: string
+          format: date-time
+        updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlightDelayUpdate"
+
+    FlightTrackerStatus:
+      type: object
+      required: [apiConfigured, simulationMode, lastCheckedAt, autoCheckEnabled, checkIntervalMinutes]
+      properties:
+        apiConfigured:
+          type: boolean
+        simulationMode:
+          type: boolean
+        lastCheckedAt:
+          type: ["string", "null"]
+          format: date-time
+        autoCheckEnabled:
+          type: boolean
+        checkIntervalMinutes:
           type: integer
 
     # ── WEBHOOK ───────────────────────────────────────────────────────────────

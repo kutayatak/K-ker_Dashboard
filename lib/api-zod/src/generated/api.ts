@@ -366,6 +366,37 @@ export const GetAccountingSummaryResponse = zod.array(GetAccountingSummaryRespon
 
 
 /**
+ * @summary Check delays for all today's tasks with flight codes and update scheduled times
+ */
+export const CheckFlightDelaysResponse = zod.object({
+  "checkedFlights": zod.number(),
+  "updatedTasks": zod.number(),
+  "simulationMode": zod.boolean(),
+  "checkedAt": zod.coerce.date(),
+  "updates": zod.array(zod.object({
+  "taskId": zod.number(),
+  "flightCode": zod.string(),
+  "previousTime": zod.coerce.date(),
+  "updatedTime": zod.coerce.date(),
+  "delayMinutes": zod.number(),
+  "flightStatus": zod.string().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Get flight tracker status (last check time, API configured)
+ */
+export const GetFlightTrackerStatusResponse = zod.object({
+  "apiConfigured": zod.boolean(),
+  "simulationMode": zod.boolean(),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "autoCheckEnabled": zod.boolean(),
+  "checkIntervalMinutes": zod.number()
+})
+
+
+/**
  * @summary Handle WhatsApp button response from driver
  */
 export const WhatsappWebhookBody = zod.object({

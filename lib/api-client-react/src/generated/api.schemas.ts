@@ -234,6 +234,32 @@ export interface VehicleRevenue {
   tripCount: number;
 }
 
+export interface FlightDelayUpdate {
+  taskId: number;
+  flightCode: string;
+  previousTime: string;
+  updatedTime: string;
+  delayMinutes: number;
+  flightStatus?: string;
+}
+
+export interface FlightCheckResult {
+  checkedFlights: number;
+  updatedTasks: number;
+  simulationMode: boolean;
+  checkedAt: string;
+  updates?: FlightDelayUpdate[];
+}
+
+export interface FlightTrackerStatus {
+  apiConfigured: boolean;
+  simulationMode: boolean;
+  /** @nullable */
+  lastCheckedAt: string | null;
+  autoCheckEnabled: boolean;
+  checkIntervalMinutes: number;
+}
+
 export type WhatsAppWebhookPayloadEntryItem = { [key: string]: unknown };
 
 export interface WhatsAppWebhookPayload {
