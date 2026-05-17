@@ -93,11 +93,14 @@ router.post("/import", async (req, res) => {
 
   for (const t of parsed.data.tasks) {
     try {
+      const hasPlate = t.notes && t.notes.includes("Plaka:");
+      const status = hasPlate ? "completed" : "draft";
+
       const [task] = await db
         .insert(tasksTable)
         .values({
           ...t,
-          status: "draft",
+          status,
           scheduledTime: new Date(t.scheduledTime),
           fee: t.fee != null ? String(t.fee) : null,
         })

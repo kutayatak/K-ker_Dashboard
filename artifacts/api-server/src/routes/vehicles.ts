@@ -46,6 +46,28 @@ router.post("/", async (req, res) => {
   const parsed = CreateVehicleBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body", details: parsed.error });
 
+  // Check if a vehicle with the same plate already exists
+  const [existing] = await db
+    .select()
+    .from(vehiclesTable)
+    .where(eq(vehiclesTable.plate, parsed.data.plate));
+
+  if (existing) {
+    const [updated] = await db
+      .update(vehiclesTable)
+      .set({
+        name: parsed.data.name,
+        type: parsed.data.type,
+        driverName: parsed.data.driverName,
+        phone: parsed.data.phone,
+        capacity: parsed.data.capacity ?? existing.capacity,
+        notes: parsed.data.notes ?? existing.notes,
+      })
+      .where(eq(vehiclesTable.id, existing.id))
+      .returning();
+    return res.json(updated);
+  }
+
   // Get max queue position
   const all = await db.select({ qp: vehiclesTable.queuePosition }).from(vehiclesTable).where(isNotNull(vehiclesTable.queuePosition));
   const maxPos = all.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);

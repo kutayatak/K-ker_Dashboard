@@ -158,7 +158,7 @@ export function ImportTasks() {
     reader.onload = (evt) => {
       try {
         const data = evt.target?.result;
-        const workbook = xlsx.read(data, { type: "binary" });
+        const workbook = xlsx.read(data, { type: "array" });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
@@ -210,7 +210,11 @@ export function ImportTasks() {
             const row = rows[i];
             if (!row) continue;
 
-            const sno = Number(row[0]);
+            const rawSno = row[0];
+            if (rawSno == null) continue;
+            const cleanSno = String(rawSno).replace(/\s/g, "");
+            const sno = Number(cleanSno);
+
             // Only accept the first 15 crew/task vehicles (S.NO 1 to 15)
             if (!isNaN(sno) && sno >= 1 && sno <= 15) {
               const baseName = String(row[1] || "").trim();
@@ -273,7 +277,7 @@ export function ImportTasks() {
         setParseError("Dosya okunurken hata: " + (err?.message || String(err)));
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleConfirmTasks = () => {
