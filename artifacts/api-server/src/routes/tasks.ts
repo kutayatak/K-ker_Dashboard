@@ -119,6 +119,8 @@ router.post("/batch-notify", async (req, res) => {
   let sent = 0;
   let failed = 0;
 
+  const driverTasks = new Map<number, { phone: string; driverName: string; tasks: typeof tasksTable.$inferSelect[] }>();
+
   for (const taskId of parsed.data.taskIds) {
     const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
     if (!task || task.status !== "draft" || !task.vehicleId) {
@@ -129,50 +131,41 @@ router.post("/batch-notify", async (req, res) => {
     const [vehicle] = await db.select().from(vehiclesTable).where(eq(vehiclesTable.id, task.vehicleId));
     if (!vehicle) { failed++; continue; }
 
-    // Format: [SAAT] | [UÇUŞ KODU] | [KİŞİ SAYISI] | [NEREDEN] -> [NEREYE]
-    const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-    const message = `${time} | ${task.flightCode ?? "-"} | ${task.passengerCount} kişi | ${task.pickupLocation} -> ${task.dropoffLocation}`;
+    if (!driverTasks.has(task.vehicleId)) {
+      driverTasks.set(task.vehicleId, { phone: vehicle.phone, driverName: vehicle.driverName, tasks: [] });
+    }
+    driverTasks.get(task.vehicleId)!.tasks.push(task);
+  }
 
-    // WhatsApp Business API integration point
-    // If WHATSAPP_TOKEN and WHATSAPP_PHONE_ID are set, send the message
-    const token = process.env.WHATSAPP_TOKEN;
-    const phoneId = process.env.WHATSAPP_PHONE_ID;
+  const links = [];
 
-    if (token && phoneId) {
-      try {
-        const phone = vehicle.phone.replace(/\D/g, "");
-        const payload = {
-          messaging_product: "whatsapp",
-          to: phone,
-          type: "interactive",
-          interactive: {
-            type: "button",
-            body: { text: message },
-            action: {
-              buttons: [{ type: "reply", reply: { id: `pickup_${task.id}`, title: "YOLCUYU ALDIM" } }],
-            },
-          },
-        };
+  for (const [vehicleId, data] of driverTasks.entries()) {
+    let messageText = `Merhaba ${data.driverName}, size atanan yeni görevler:\n\n`;
+    const updatedTaskIds = [];
 
-        await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+    for (const task of data.tasks) {
+      const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      messageText += `🕒 ${time} | ✈️ ${task.flightCode ?? "-"} | 👥 ${task.passengerCount} kişi\n📍 ${task.pickupLocation} -> 🏁 ${task.dropoffLocation}\n\n`;
+      updatedTaskIds.push(task.id);
+    }
+    messageText += `Lütfen görevleri aldığınızı onaylayın. İyi çalışmalar!`;
 
-        await db.update(tasksTable).set({ status: "assigned" }).where(eq(tasksTable.id, taskId));
-        sent++;
-      } catch {
-        failed++;
-      }
-    } else {
-      // Dev mode: just mark as assigned
+    // Format phone for wa.me (numbers only, add country code if missing)
+    let phone = data.phone.replace(/\D/g, "");
+    if (phone.startsWith("0")) phone = phone.substring(1);
+    if (phone.length === 10) phone = "90" + phone; // Default to Turkey if 10 digits
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`;
+    links.push({ driverName: data.driverName, phone: data.phone, url, taskIds: updatedTaskIds });
+
+    // Update status to assigned
+    for (const taskId of updatedTaskIds) {
       await db.update(tasksTable).set({ status: "assigned" }).where(eq(tasksTable.id, taskId));
       sent++;
     }
   }
 
-  return res.json({ sent, failed });
+  return res.json({ sent, failed, links });
 });
 
 // POST /tasks

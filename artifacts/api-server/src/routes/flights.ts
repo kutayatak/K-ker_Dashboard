@@ -12,28 +12,30 @@ const trackerState = {
   intervalHandle: null as ReturnType<typeof setInterval> | null,
 };
 
-// AviationStack API call
+// AirLabs API call
 async function fetchFlightFromApi(flightCode: string): Promise<{
   status: string;
   delayMinutes: number;
   estimatedArrival: Date | null;
 } | null> {
-  const apiKey = process.env.AVIATIONSTACK_KEY;
+  const apiKey = process.env.AIRLABS_API_KEY;
   if (!apiKey) return null;
 
   try {
     const iata = flightCode.replace(/\s+/g, "").toUpperCase();
-    const url = `http://api.aviationstack.com/v1/flights?access_key=${apiKey}&flight_iata=${iata}&limit=1`;
+    const url = `https://airlabs.co/api/v9/schedules?flight_iata=${iata}&api_key=${apiKey}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!resp.ok) return null;
 
     const json = (await resp.json()) as any;
-    const flight = json?.data?.[0];
+    const flight = json?.response?.[0]; // AirLabs returns an array in "response"
     if (!flight) return null;
 
-    const status: string = flight.flight_status ?? "unknown";
-    const delayMinutes: number = flight.arrival?.delay ?? 0;
-    const estimatedStr: string | null = flight.arrival?.estimated ?? flight.arrival?.scheduled ?? null;
+    const status: string = flight.status ?? "unknown";
+    const delayMinutes: number = flight.arr_delay ?? flight.delay ?? 0;
+    
+    // AirLabs returns times like "2023-11-15 15:30" or ISO. We parse it if available.
+    const estimatedStr: string | null = flight.arr_estimated ?? flight.arr_time ?? null;
     const estimatedArrival = estimatedStr ? new Date(estimatedStr) : null;
 
     return { status, delayMinutes: Number(delayMinutes) || 0, estimatedArrival };
@@ -42,18 +44,7 @@ async function fetchFlightFromApi(flightCode: string): Promise<{
   }
 }
 
-// Simulation mode: randomly add 0-45 min delays to some flights
-function simulateFlightData(flightCode: string): {
-  status: string;
-  delayMinutes: number;
-  estimatedArrival: Date | null;
-} {
-  // Use flight code as a seed for deterministic-ish simulation
-  const seed = flightCode.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const delayMinutes = seed % 3 === 0 ? (seed % 45) + 10 : 0; // ~1/3 flights delayed
-  const status = delayMinutes > 0 ? "delayed" : "active";
-  return { status, delayMinutes, estimatedArrival: null };
-}
+
 
 async function runFlightCheck() {
   const today = new Date();
@@ -73,7 +64,6 @@ async function runFlightCheck() {
       )
     );
 
-  const simulationMode = !process.env.AVIATIONSTACK_KEY;
   const updates: {
     taskId: number;
     flightCode: string;
@@ -86,9 +76,7 @@ async function runFlightCheck() {
   for (const task of tasks) {
     const code = task.flightCode!;
 
-    const flightData = simulationMode
-      ? simulateFlightData(code)
-      : await fetchFlightFromApi(code);
+    const flightData = await fetchFlightFromApi(code);
 
     if (!flightData || flightData.delayMinutes <= 0) continue;
 
@@ -120,7 +108,7 @@ async function runFlightCheck() {
   }
 
   trackerState.lastCheckedAt = new Date();
-  return { checkedFlights: tasks.length, updatedTasks: updates.length, simulationMode, updates };
+  return { checkedFlights: tasks.length, updatedTasks: updates.length, simulationMode: false, updates };
 }
 
 // Start auto-polling when module loads
@@ -164,8 +152,8 @@ router.post("/check", async (_req, res) => {
 // GET /flights/status
 router.get("/status", (_req, res) => {
   return res.json({
-    apiConfigured: !!process.env.AVIATIONSTACK_KEY,
-    simulationMode: !process.env.AVIATIONSTACK_KEY,
+    apiConfigured: !!process.env.AIRLABS_API_KEY,
+    simulationMode: false,
     lastCheckedAt: trackerState.lastCheckedAt?.toISOString() ?? null,
     autoCheckEnabled: trackerState.autoCheckEnabled,
     checkIntervalMinutes: trackerState.checkIntervalMinutes,

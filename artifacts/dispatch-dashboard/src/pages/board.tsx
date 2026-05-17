@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Clock,
   Users,
@@ -20,6 +21,7 @@ import {
   AlertTriangle,
   Wifi,
   Car,
+  ExternalLink,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -59,6 +61,9 @@ export function Board() {
   const checkDelaysMutation = useCheckFlightDelays();
   const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
   const [lastUpdateCount, setLastUpdateCount] = useState<number | null>(null);
+  
+  const [notifyLinks, setNotifyLinks] = useState<{ driverName: string; phone: string; url: string; }[]>([]);
+  const [isNotifyDialogOpen, setIsNotifyDialogOpen] = useState(false);
 
   const handleSelectTask = (id: number) =>
     setSelectedTasks((prev) =>
@@ -70,9 +75,13 @@ export function Board() {
     notifyMutation.mutate(
       { data: { taskIds: selectedTasks } },
       {
-        onSuccess: () => {
+        onSuccess: (response: any) => {
           setSelectedTasks([]);
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          if (response?.links && response.links.length > 0) {
+            setNotifyLinks(response.links);
+            setIsNotifyDialogOpen(true);
+          }
         },
       }
     );
@@ -285,6 +294,34 @@ export function Board() {
           </div>
         </>
       )}
+
+      {/* WhatsApp Links Dialog */}
+      <Dialog open={isNotifyDialogOpen} onOpenChange={setIsNotifyDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>WhatsApp Bildirimleri Gönder</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-4">
+            <p className="text-sm text-muted-foreground">
+              Şoförlere otomatik atanmış mesajları göndermek için aşağıdaki bağlantılara tıklayın:
+            </p>
+            {notifyLinks.map((link, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                className="justify-between h-auto py-3 px-4"
+                onClick={() => window.open(link.url, "_blank")}
+              >
+                <div className="flex flex-col items-start gap-1">
+                  <span className="font-semibold">{link.driverName}</span>
+                  <span className="text-xs text-muted-foreground">{link.phone}</span>
+                </div>
+                <ExternalLink className="w-4 h-4 text-emerald-600" />
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
