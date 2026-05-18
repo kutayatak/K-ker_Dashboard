@@ -132,41 +132,58 @@
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
-  --sidebar: 222 47% 11%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 222 47% 11%;
-  --sidebar-primary: 210 40% 98%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217 33% 17%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 212 100% 48%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
+  /* ── Comfortable dark palette ──────────────────────────────────────────
+     Base: warm zinc/slate — avoids pure black, prevents eye strain.
+     Backgrounds are layered (bg < card < popover) so depth is visible. */
+
+  --background:      220 16% 10%;   /* warm dark slate — not pure black */
+  --foreground:      213 27% 88%;   /* soft off-white — easy to read    */
+  --border:          220 14% 20%;   /* subtle dividers                  */
+
+  --card:            220 16% 13%;   /* slightly lifted above background */
+  --card-foreground: 213 27% 88%;
+  --card-border:     220 14% 20%;
+
+  --sidebar:         220 20% 8%;    /* sidebar slightly darker for depth */
+  --sidebar-foreground:         210 40% 92%;
+  --sidebar-border:             220 20% 8%;
+  --sidebar-primary:            210 40% 92%;
+  --sidebar-primary-foreground: 220 20% 8%;
+  --sidebar-accent:             220 16% 16%;
+  --sidebar-accent-foreground:  210 40% 92%;
+  --sidebar-ring:               212 100% 58%;
+
+  --popover:            220 16% 15%;
+  --popover-foreground: 213 27% 88%;
+  --popover-border:     220 14% 22%;
+
+  --primary:            217 91% 62%;  /* bright blue — stands out on dark */
+  --primary-foreground: 220 20% 8%;
+
+  --secondary:            220 14% 18%;
+  --secondary-foreground: 213 27% 88%;
+
+  --muted:            220 14% 16%;
+  --muted-foreground: 217 16% 54%;  /* readable but not overpowering  */
+
+  --accent:            220 14% 18%;
+  --accent-foreground: 213 27% 88%;
+
+  --destructive:            0 68% 42%;
   --destructive-foreground: 210 40% 98%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
-  --chart-1: 221 83% 53%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 37% 24%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+
+  --input: 220 14% 18%;
+  --ring:  217 91% 62%;
+
+  --chart-1: 217 91% 62%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 197 40% 52%;
+  --chart-4:  43 80% 60%;
+  --chart-5:  27 87% 65%;
+
+  --opaque-button-border-intensity: 6;
 }
+
 
 @layer base {
   * {

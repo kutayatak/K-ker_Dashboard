@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="tr">
   <head>
+    <!-- Anti-FOUC: apply theme before paint -->
+    <script>
+      (function() {
+        var stored = localStorage.getItem("theme");
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (stored === "dark" || (!stored && prefersDark)) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Akıllı Sevkiyat Paneli</title>
