@@ -88,7 +88,7 @@ export function Vehicles() {
       type: fd.get("type") as "fixed" | "outsource",
       driverName: fd.get("driverName") as string,
       phone: fd.get("phone") as string,
-      capacity: parseInt(fd.get("capacity") as string) || 4,
+      capacity: 10,
     };
     createMutation.mutate({ data }, {
       onSuccess: () => {
@@ -106,7 +106,7 @@ export function Vehicles() {
       plate: fd.get("plate") as string,
       driverName: fd.get("driverName") as string,
       phone: fd.get("phone") as string,
-      capacity: parseInt(fd.get("capacity") as string) || 4,
+      capacity: 10,
     };
     updateMutation.mutate({ id: editingVehicle.id, data }, {
       onSuccess: () => {
@@ -162,10 +162,7 @@ export function Vehicles() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Kapasite (Kişi)</Label>
-                  <Input name="capacity" type="number" defaultValue="4" required />
-                </div>
+
                 <div className="space-y-2">
                   <Label>Şoför Adı</Label>
                   <Input name="driverName" required />
@@ -291,10 +288,7 @@ export function Vehicles() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Kapasite (Kişi)</Label>
-                  <Input name="capacity" type="number" defaultValue={editingVehicle.capacity} required />
-                </div>
+
                 <div className="space-y-2">
                   <Label>Şoför Adı</Label>
                   <Input name="driverName" defaultValue={editingVehicle.driverName} required />

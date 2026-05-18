@@ -213,8 +213,15 @@ export const ImportTasksBody = zod.object({
   "scheduledTime": zod.coerce.date(),
   "vehicleId": zod.number().optional(),
   "notes": zod.string().optional(),
-  "fee": zod.number().optional()
-}))
+  "fee": zod.number().optional(),
+  "km": zod.number().optional(),
+  "importKey": zod.string().optional(),
+  "rowIndex": zod.number().optional(),
+  "tableType": zod.enum(['left', 'right']).optional()
+})),
+  "excelBase64": zod.string().optional(),
+  "excelDate": zod.string().optional(),
+  "excelFilename": zod.string().optional()
 })
 
 export const ImportTasksResponse = zod.object({
@@ -299,7 +306,8 @@ export const UpdateTaskBody = zod.object({
   "actualPickupTime": zod.coerce.date().nullish(),
   "actualDropoffTime": zod.coerce.date().nullish(),
   "notes": zod.string().nullish(),
-  "fee": zod.number().nullish()
+  "fee": zod.number().nullish(),
+  "km": zod.number().nullish()
 })
 
 export const UpdateTaskResponse = zod.object({

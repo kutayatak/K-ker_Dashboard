@@ -40,6 +40,7 @@ import {
   XCircle,
   Pencil,
   Send,
+  Download,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -182,8 +183,8 @@ export function Board() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editForm, setEditForm] = useState<{
     scheduledTime: string; pickupLocation: string; dropoffLocation: string;
-    passengerCount: string; flightCode: string; notes: string; fee: string;
-  }>({ scheduledTime: "", pickupLocation: "", dropoffLocation: "", passengerCount: "", flightCode: "", notes: "", fee: "" });
+    flightCode: string; notes: string; fee: string; km: string;
+  }>({ scheduledTime: "", pickupLocation: "", dropoffLocation: "", flightCode: "", notes: "", fee: "", km: "" });
 
   // Track tasks updated after notification (to show "Güncelleme Bildir")
   const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<number>>(new Set());
@@ -239,13 +240,24 @@ export function Board() {
     );
   };
 
+  const handleDownloadExcel = () => {
+    const today = new Date().toISOString().split("T")[0];
+    window.open(`/api/excel/download?date=${today}`, "_blank");
+  };
+
   const handleCancel = (task: Task) => {
     // If a vehicle was assigned, send a cancellation WA message first
     if (task.vehicleId) {
       const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
       if (vehicle) {
         const time = format(new Date(task.scheduledTime), "HH:mm");
-        const message = `Merhaba ${vehicle.driverName}, ${time}'de planlanmış ${task.pickupLocation} → ${task.dropoffLocation} transferi İPTAL EDİLMİŞTİR. İyi çalışmalar.`;
+        const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
+        const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+        const crew = task.notes
+          ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+          : "";
+        const line = [task.flightCode, time, location, crew, direction].filter(Boolean).join("   ");
+        const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görev İPTAL EDİLMİŞTİR:\n${line}\n\nİyi çalışmalar.`;
         window.open(makeWaUrl(vehicle.phone, message), "_blank");
       }
     }
@@ -263,10 +275,10 @@ export function Board() {
       scheduledTime: local,
       pickupLocation: task.pickupLocation ?? "",
       dropoffLocation: task.dropoffLocation ?? "",
-      passengerCount: String(task.passengerCount ?? 1),
       flightCode: task.flightCode ?? "",
       notes: task.notes ?? "",
       fee: task.fee != null ? String(task.fee) : "",
+      km: (task as any).km != null ? String((task as any).km) : "",
     });
   };
 
@@ -280,7 +292,6 @@ export function Board() {
           scheduledTime: editForm.scheduledTime ? new Date(editForm.scheduledTime).toISOString() : undefined,
           pickupLocation: editForm.pickupLocation || undefined,
           dropoffLocation: editForm.dropoffLocation || undefined,
-          passengerCount: editForm.passengerCount ? Number(editForm.passengerCount) : undefined,
           flightCode: editForm.flightCode || undefined,
           notes: editForm.notes || undefined,
           fee: editForm.fee ? Number(editForm.fee) : undefined,
@@ -302,7 +313,13 @@ export function Board() {
     const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
     if (!vehicle) return;
     const time = format(new Date(task.scheduledTime), "HH:mm");
-    const message = `Merhaba ${vehicle.driverName}, görevinizde GÜNCELLEME yapılmıştır:\n\n🕒 ${time} | ${task.pickupLocation} → ${task.dropoffLocation}\n${task.flightCode ? `✈️ ${task.flightCode}` : ""}\n\nLütfen bilginize alın.`;
+    const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
+    const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+    const crew = task.notes
+      ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+      : "";
+    const line = [task.flightCode, time, location, crew, direction].filter(Boolean).join("   ");
+    const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görevde GÜNCELLEME yapılmıştır:\n${line}\n\nLütfen kontrol ediniz. İyi çalışmalar.`;
     window.open(makeWaUrl(vehicle.phone, message), "_blank");
     setPendingUpdateIds((prev) => {
       const next = new Set(prev);
@@ -426,6 +443,15 @@ export function Board() {
               className={`w-3.5 h-3.5 ${checkDelaysMutation.isPending ? "animate-spin" : ""}`}
             />
             <span className="hidden md:inline ml-1">Kontrol Et</span>
+          </Button>
+
+          <Button
+            size="sm"
+            className="h-7 px-2 text-xs ml-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={handleDownloadExcel}
+          >
+            <Download className="w-3.5 h-3.5 mr-1" />
+            <span className="hidden md:inline">İndir</span>
           </Button>
         </div>
       </div>
@@ -728,16 +754,18 @@ export function Board() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Yolcu Sayısı</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">KM</label>
                   <input
                     type="number"
-                    min={1}
+                    min={0}
+                    placeholder="örn. 45"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    value={editForm.passengerCount}
-                    onChange={(e) => setEditForm(f => ({ ...f, passengerCount: e.target.value }))}
+                    value={editForm.km}
+                    onChange={(e) => setEditForm(f => ({ ...f, km: e.target.value }))}
                   />
                 </div>
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nereden</label>
                 <input

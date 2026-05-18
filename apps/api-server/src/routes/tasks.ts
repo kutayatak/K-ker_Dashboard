@@ -88,31 +88,99 @@ router.post("/import", async (req, res) => {
   const parsed = ImportTasksBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body", details: parsed.error });
 
+  const { tasks, excelBase64, excelDate, excelFilename } = parsed.data;
+
+  // ── Save Excel file if provided ──────────────────────────────────────────
+  if (excelBase64 && excelDate) {
+    const { excelFilesTable } = await import("@workspace/db");
+    await db
+      .insert(excelFilesTable)
+      .values({ date: excelDate, filename: excelFilename ?? "import.xlsx", data: excelBase64 })
+      .onConflictDoUpdate({
+        target: excelFilesTable.date,
+        set: { filename: excelFilename ?? "import.xlsx", data: excelBase64, uploadedAt: new Date() },
+      });
+  }
+
+  // ── Load route presets for auto-KM ──────────────────────────────────────
+  const { routePresetsTable } = await import("@workspace/db");
+  const presets = await db.select().from(routePresetsTable);
+
   const created = [];
+  let updated = 0;
   let skipped = 0;
 
-  for (const t of parsed.data.tasks) {
+  for (const t of tasks) {
     try {
       const hasPlate = t.notes && (t.notes.includes("Plaka:") || t.notes.toLowerCase().includes("plaka"));
       const status = hasPlate ? "completed" : "draft";
 
-      const [task] = await db
-        .insert(tasksTable)
-        .values({
-          ...t,
-          status,
-          scheduledTime: new Date(t.scheduledTime),
-          fee: t.fee != null ? String(t.fee) : null,
-        })
-        .returning();
-      created.push(await enrichTask(task));
+      // Auto-fill KM from route preset if not provided
+      let km = t.km != null ? String(t.km) : null;
+      if (!km) {
+        const match = presets.find(
+          (p) =>
+            p.pickupLocation.trim().toLowerCase() === (t.pickupLocation ?? "").trim().toLowerCase() &&
+            p.dropoffLocation.trim().toLowerCase() === (t.dropoffLocation ?? "").trim().toLowerCase()
+        );
+        if (match) km = String(match.km);
+      }
+
+      const values = {
+        type: t.type,
+        flightCode: t.flightCode ?? null,
+        passengerCount: t.passengerCount,
+        pickupLocation: t.pickupLocation,
+        dropoffLocation: t.dropoffLocation,
+        scheduledTime: new Date(t.scheduledTime),
+        notes: t.notes ?? null,
+        fee: t.fee != null ? String(t.fee) : null,
+        km,
+        importKey: t.importKey ?? null,
+        rowIndex: t.rowIndex ?? null,
+        tableType: t.tableType ?? null,
+        status,
+      };
+
+      if (t.importKey) {
+        // UPSERT — update everything except vehicleId/status if already assigned
+        const [existing] = await db
+          .select({ id: tasksTable.id, vehicleId: tasksTable.vehicleId, status: tasksTable.status })
+          .from(tasksTable)
+          .where(eq(tasksTable.importKey, t.importKey));
+
+        if (existing) {
+          // Don't override assigned vehicles or completed tasks
+          const keepVehicle = existing.vehicleId != null;
+          const keepStatus = existing.status === "assigned" || existing.status === "completed";
+          const [task] = await db
+            .update(tasksTable)
+            .set({
+              ...values,
+              vehicleId: keepVehicle ? existing.vehicleId : null,
+              status: keepStatus ? existing.status : status,
+            })
+            .where(eq(tasksTable.id, existing.id))
+            .returning();
+          created.push(await enrichTask(task));
+          updated++;
+        } else {
+          const [task] = await db.insert(tasksTable).values(values).returning();
+          created.push(await enrichTask(task));
+        }
+      } else {
+        // No importKey — plain insert
+        const [task] = await db.insert(tasksTable).values(values).returning();
+        created.push(await enrichTask(task));
+      }
     } catch {
       skipped++;
     }
   }
 
-  return res.json({ created: created.length, skipped, tasks: created });
+  return res.json({ created: created.length - updated, updated, skipped, tasks: created });
 });
+
 
 // POST /tasks/batch-notify
 router.post("/batch-notify", async (req, res) => {
@@ -143,23 +211,39 @@ router.post("/batch-notify", async (req, res) => {
   const links = [];
 
   for (const [vehicleId, data] of driverTasks.entries()) {
-    let messageText = `Merhaba ${data.driverName}, size atanan yeni görevler:\n\n`;
+    // Sort tasks by scheduled time
+    const sortedTasks = data.tasks.sort(
+      (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+    );
+
+    let messageText = `Merhaba ${data.driverName}\n\n`;
     const updatedTaskIds = [];
 
-    for (const task of data.tasks) {
+    for (const task of sortedTasks) {
       const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-      const crewInfo = (task.notes && (task.notes.includes("CPT") || task.notes.includes("KBN") || task.notes.toLowerCase().includes("cpt") || task.notes.toLowerCase().includes("kbn")))
-        ? (task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes)
-        : `${task.passengerCount} kişi`;
-      messageText += `🕒 ${time} | ✈️ ${task.flightCode ?? "-"} | 👥 ${crewInfo}\n📍 ${task.pickupLocation} -> 🏁 ${task.dropoffLocation}\n\n`;
+      // Crew notes: use notes field (already contains crew info like "2CPT"), strip plate part
+      const crew = task.notes
+        ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+        : "";
+      // Direction label based on type
+      const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
+      // Main location: hotel name
+      const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+      // Flight code
+      const flight = task.flightCode ?? "";
+
+      // Format: "FMF 183   06:00   RİXOS   2CPT   GELİR"
+      const parts = [flight, time, location, crew, direction].filter(Boolean);
+      messageText += parts.join("   ") + "\n";
       updatedTaskIds.push(task.id);
     }
-    messageText += `Lütfen görevleri aldığınızı onaylayın. İyi çalışmalar!`;
 
-    // Format phone for wa.me (numbers only, add country code if missing)
+    messageText += "\nİyi çalışmalar!";
+
+    // Format phone for wa.me
     let phone = data.phone.replace(/\D/g, "");
     if (phone.startsWith("0")) phone = phone.substring(1);
-    if (phone.length === 10) phone = "90" + phone; // Default to Turkey if 10 digits
+    if (phone.length === 10) phone = "90" + phone;
 
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`;
     links.push({ driverName: data.driverName, phone: data.phone, url, taskIds: updatedTaskIds });
@@ -173,6 +257,8 @@ router.post("/batch-notify", async (req, res) => {
 
   return res.json({ sent, failed, links });
 });
+
+
 
 // POST /tasks
 router.post("/", async (req, res) => {

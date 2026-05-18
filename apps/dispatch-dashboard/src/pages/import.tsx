@@ -53,7 +53,7 @@ function isValidValue(val: any): boolean {
 }
 
 // Build task for first section (regular pages)
-function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
+function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "right"): any | null {
   if (tableType === "left") {
     // Columns: A=S.NO, B=UÇUŞ KODU, C=PLAKA, D=ALINIŞ SAAT, E=OTEL ADI, F=EKİP SAYISI, G=KM
     const flightCode = String(row[1] || "").trim();
@@ -61,9 +61,13 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
     const timeRaw    = row[3];
     const hotelName  = String(row[4] || "").trim();
     const ekip       = String(row[5] || "").trim();
+    const kmRaw      = row[6];
 
     if (!isValidValue(row[4]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
     if (!isValidValue(row[1]) && !isValidValue(row[4])) return null;
+
+    const scheduledTime = buildScheduledTime(timeRaw);
+    const importKey = `hotel_pickup|${scheduledTime}|${hotelName}|Esenboğa Havalimanı`;
 
     return {
       type: "hotel_pickup",
@@ -71,8 +75,12 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
       passengerCount: parsePassengerCount(ekip),
       pickupLocation: hotelName,
       dropoffLocation: "Esenboğa Havalimanı",
-      scheduledTime: buildScheduledTime(timeRaw),
+      scheduledTime,
       notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      km: kmRaw != null && !isNaN(Number(kmRaw)) ? Number(kmRaw) : undefined,
+      rowIndex,
+      tableType,
+      importKey,
     };
   } else {
     // Columns: H=UÇUŞ KODU, I=PLAKA, J=ÖNÜ SAAT, K=OTEL ADI, L=EKİP SAYISI, M=KM
@@ -81,9 +89,13 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
     const timeRaw    = row[9];
     const hotelName  = String(row[10] || "").trim();
     const ekip       = String(row[11] || "").trim();
+    const kmRaw      = row[12];
 
     if (!isValidValue(row[10]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
     if (!isValidValue(row[7]) && !isValidValue(row[10])) return null;
+
+    const scheduledTime = buildScheduledTime(timeRaw);
+    const importKey = `airport_run|${scheduledTime}|Esenboğa Havalimanı|${hotelName}`;
 
     return {
       type: "airport_run",
@@ -91,14 +103,18 @@ function buildRegularTask(row: any[], tableType: "left" | "right"): any | null {
       passengerCount: parsePassengerCount(ekip),
       pickupLocation: "Esenboğa Havalimanı",
       dropoffLocation: hotelName,
-      scheduledTime: buildScheduledTime(timeRaw),
+      scheduledTime,
       notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      km: kmRaw != null && !isNaN(Number(kmRaw)) ? Number(kmRaw) : undefined,
+      rowIndex,
+      tableType,
+      importKey,
     };
   }
 }
 
 // Build task for second section (ekstra / page 2)
-function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
+function buildEkstraTask(row: any[], rowIndex: number, tableType: "left" | "right"): any | null {
   if (tableType === "left") {
     // Columns: A=S.NO, B=ALINIŞ SAAT, C=PLAKA, D=OTEL ADI / AÇIKLAMA
     const timeRaw = row[1];
@@ -107,14 +123,20 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
 
     if (!isValidValue(row[3]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
 
+    const scheduledTime = buildScheduledTime(timeRaw);
+    const importKey = `extra|${scheduledTime}|${desc}|Ekstra Gider`;
+
     return {
       type: "extra",
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
       dropoffLocation: "Ekstra Gider",
-      scheduledTime: buildScheduledTime(timeRaw),
+      scheduledTime,
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      rowIndex,
+      tableType,
+      importKey,
     };
   } else {
     // Columns: H=ÖNÜ SAAT, I=PLAKA, J=OTEL ADI / AÇIKLAMA
@@ -124,16 +146,46 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
 
     if (!isValidValue(row[9]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
 
+    const scheduledTime = buildScheduledTime(timeRaw);
+    const importKey = `extra|${scheduledTime}|${desc}|Ekstra Gelir`;
+
     return {
       type: "extra",
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
       dropoffLocation: "Ekstra Gelir",
-      scheduledTime: buildScheduledTime(timeRaw),
+      scheduledTime,
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      rowIndex,
+      tableType,
+      importKey,
     };
   }
+}
+
+// Split task into 10-person chunks
+function splitTask(task: any): any[] {
+  if (!task) return [];
+  if (task.passengerCount <= 10) return [task];
+  
+  const result: any[] = [];
+  let remaining = task.passengerCount;
+  let part = 1;
+  
+  while (remaining > 0) {
+    const pCount = Math.min(remaining, 10);
+    result.push({
+      ...task,
+      passengerCount: pCount,
+      importKey: `${task.importKey}_part${part}`,
+      notes: task.notes ? `${task.notes} (Bölüm ${part})` : `(Bölüm ${part})`
+    });
+    remaining -= pCount;
+    part++;
+  }
+  
+  return result;
 }
 
 export function ImportTasks() {
@@ -148,6 +200,8 @@ export function ImportTasks() {
   const [parseError, setParseError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  const [excelBase64, setExcelBase64] = useState<string | null>(null);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -157,8 +211,11 @@ export function ImportTasks() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = evt.target?.result;
-        const workbook = xlsx.read(data, { type: "array" });
+        const dataUrl = evt.target?.result as string;
+        const b64 = dataUrl.split(",")[1];
+        setExcelBase64(b64);
+        
+        const workbook = xlsx.read(b64, { type: "base64" });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
@@ -185,17 +242,17 @@ export function ImportTasks() {
             if (isNaN(Number(colAStr))) continue;
 
             if (currentSection === "regular") {
-              const leftTask = buildRegularTask(row, "left");
-              if (leftTask) tasks.push(leftTask);
+              const leftTask = buildRegularTask(row, i + 1, "left");
+              if (leftTask) tasks.push(...splitTask(leftTask));
 
-              const rightTask = buildRegularTask(row, "right");
-              if (rightTask) tasks.push(rightTask);
+              const rightTask = buildRegularTask(row, i + 1, "right");
+              if (rightTask) tasks.push(...splitTask(rightTask));
             } else {
-              const leftTask = buildEkstraTask(row, "left");
-              if (leftTask) tasks.push(leftTask);
+              const leftTask = buildEkstraTask(row, i + 1, "left");
+              if (leftTask) tasks.push(...splitTask(leftTask));
 
-              const rightTask = buildEkstraTask(row, "right");
-              if (rightTask) tasks.push(rightTask);
+              const rightTask = buildEkstraTask(row, i + 1, "right");
+              if (rightTask) tasks.push(...splitTask(rightTask));
             }
           }
 
@@ -353,21 +410,30 @@ export function ImportTasks() {
         setParseError("Dosya okunurken hata: " + (err?.message || String(err)));
       }
     };
-    reader.readAsArrayBuffer(file);
+    reader.readAsDataURL(file);
   };
 
   const handleConfirmTasks = () => {
     if (parsedTasks.length === 0) return;
 
     importMutation.mutate(
-      { data: { tasks: parsedTasks as any } },
+      { 
+        data: { 
+          tasks: parsedTasks as any,
+          excelBase64: excelBase64 ?? undefined,
+          excelDate: new Date().toISOString().split("T")[0],
+          excelFilename: fileName ?? "import.xlsx"
+        } 
+      },
       {
         onSuccess: (result: any) => {
           const created = result?.created ?? parsedTasks.length;
-          alert(`İçe aktarma başarılı! ${created} görev oluşturuldu.`);
+          const updated = result?.updated ?? 0;
+          alert(`İçe aktarma başarılı! ${created} yeni görev eklendi, ${updated} görev güncellendi.`);
           setParsedTasks([]);
           setFileName(null);
           setParseError(null);
+          setExcelBase64(null);
         },
         onError: (err: any) => {
           alert("İçe aktarma hatası: " + (err?.message || "Bilinmeyen hata"));
