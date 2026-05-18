@@ -225,6 +225,13 @@ export function Board() {
     }
   };
 
+  const handleDropAssign = (taskId: number, vehicleId: number) => {
+    updateTaskMutation.mutate(
+      { id: taskId, data: { vehicleId, status: "draft" } },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+    );
+  };
+
   const handleComplete = (task: Task) => {
     updateTaskMutation.mutate(
       { id: task.id, data: { status: "completed" } },
@@ -499,6 +506,7 @@ export function Board() {
             onCancel={handleCancel}
             onEdit={handleOpenEdit}
             onUpdateNotify={handleUpdateNotify}
+            onDropAssign={handleDropAssign}
             pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
@@ -512,6 +520,7 @@ export function Board() {
             onCancel={handleCancel}
             onEdit={handleOpenEdit}
             onUpdateNotify={handleUpdateNotify}
+            onDropAssign={handleDropAssign}
             pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
@@ -555,6 +564,7 @@ export function Board() {
               onCancel={handleCancel}
               onEdit={handleOpenEdit}
               onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
               pendingUpdateIds={pendingUpdateIds}
             />
           )}
@@ -569,6 +579,7 @@ export function Board() {
               onCancel={handleCancel}
               onEdit={handleOpenEdit}
               onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
               pendingUpdateIds={pendingUpdateIds}
             />
           )}
@@ -849,7 +860,12 @@ function QueueList({
         <div
           key={v.id}
           draggable
-          onDragStart={() => onDragStart(idx)}
+          onDragStart={(e) => {
+            onDragStart(idx);
+            e.dataTransfer.setData("text/vehicle-id", String(v.id));
+            e.dataTransfer.setData("text/vehicle-name", `${v.plate} — ${v.driverName}`);
+            e.dataTransfer.effectAllowed = "move";
+          }}
           onDragOver={(e) => onDragOver(e, idx)}
           onDragEnd={onDragEnd}
           className={`rounded-lg p-3 text-sm border cursor-grab active:cursor-grabbing transition-all duration-150 flex flex-col gap-1.5 relative group/qitem hover:border-primary/40 ${
@@ -912,6 +928,7 @@ function MobileTaskList({
   onCancel,
   onEdit,
   onUpdateNotify,
+  onDropAssign,
   pendingUpdateIds = new Set(),
   showCompletedColors = false,
 }: {
@@ -924,6 +941,7 @@ function MobileTaskList({
   onCancel?: (task: Task) => void;
   onEdit?: (task: Task) => void;
   onUpdateNotify?: (task: Task) => void;
+  onDropAssign?: (taskId: number, vehicleId: number) => void;
   pendingUpdateIds?: Set<number>;
   showCompletedColors?: boolean;
 }) {
@@ -948,6 +966,7 @@ function MobileTaskList({
           onCancel={onCancel ? () => onCancel(t) : undefined}
           onEdit={onEdit ? () => onEdit(t) : undefined}
           onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
+          onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
           hasPendingUpdate={pendingUpdateIds.has(t.id)}
           showCompletedColor={showCompletedColors}
           fullWidth
@@ -969,6 +988,7 @@ function TaskColumn({
   onCancel,
   onEdit,
   onUpdateNotify,
+  onDropAssign,
   pendingUpdateIds = new Set(),
   showCompletedColors = false,
 }: {
@@ -982,6 +1002,7 @@ function TaskColumn({
   onCancel?: (task: Task) => void;
   onEdit?: (task: Task) => void;
   onUpdateNotify?: (task: Task) => void;
+  onDropAssign?: (taskId: number, vehicleId: number) => void;
   pendingUpdateIds?: Set<number>;
   showCompletedColors?: boolean;
 }) {
@@ -1008,6 +1029,7 @@ function TaskColumn({
             onCancel={onCancel ? () => onCancel(t) : undefined}
             onEdit={onEdit ? () => onEdit(t) : undefined}
             onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
+            onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
             hasPendingUpdate={pendingUpdateIds.has(t.id)}
             showCompletedColor={showCompletedColors}
           />
@@ -1029,6 +1051,7 @@ function TaskCard({
   onCancel,
   onEdit,
   onUpdateNotify,
+  onDropAssign,
   hasPendingUpdate = false,
   showCompletedColor = false,
   fullWidth = false,
@@ -1042,6 +1065,7 @@ function TaskCard({
   onCancel?: () => void;
   onEdit?: () => void;
   onUpdateNotify?: () => void;
+  onDropAssign?: (vehicleId: number) => void;
   hasPendingUpdate?: boolean;
   showCompletedColor?: boolean;
   fullWidth?: boolean;
@@ -1057,8 +1081,13 @@ function TaskCard({
   // Colour coding for completed column
   const isGelirType = task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
 
+  // Drag-over state for vehicle assignment
+  const [isDragOver, setIsDragOver] = useState(false);
+
   let cardBg = "";
-  if (task.status === "completed") {
+  if (isDragOver) {
+    cardBg = "bg-primary/5 border-primary border-2";
+  } else if (task.status === "completed") {
     cardBg = showCompletedColor
       ? isGelirType
         ? "bg-emerald-50/60 border-emerald-200"
@@ -1076,12 +1105,43 @@ function TaskCard({
     <div
       className={`relative overflow-hidden rounded-lg border transition-all
         ${selectable ? "cursor-pointer active:scale-[0.99]" : "cursor-default"}
-        ${selected ? "ring-2 ring-primary border-transparent" : "hover:border-primary/40"}
+        ${!isDragOver && selected ? "ring-2 ring-primary border-transparent" : ""}
+        ${!isDragOver && !selected ? "hover:border-primary/40" : ""}
         ${cardBg}
         ${fullWidth ? "w-full" : ""}
       `}
       onClick={selectable ? onSelect : undefined}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("text/vehicle-id") && onDropAssign && task.status !== "completed") {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          setIsDragOver(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsDragOver(false);
+        }
+      }}
+      onDrop={(e) => {
+        setIsDragOver(false);
+        const vehicleId = e.dataTransfer.getData("text/vehicle-id");
+        if (vehicleId && onDropAssign && task.status !== "completed") {
+          e.preventDefault();
+          e.stopPropagation();
+          onDropAssign(Number(vehicleId));
+        }
+      }}
     >
+      {/* Drop-zone overlay hint */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-primary/10 rounded-lg pointer-events-none">
+          <span className="text-xs font-bold text-primary bg-background/90 px-3 py-1.5 rounded-full shadow-sm border border-primary/30">
+            Araç Ata
+          </span>
+        </div>
+      )}
+
       <div className="p-3">
         {/* Time + badge + action menu row */}
         <div className="flex items-center justify-between mb-2 gap-1">
