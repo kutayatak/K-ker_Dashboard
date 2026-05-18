@@ -93,7 +93,7 @@ router.post("/import", async (req, res) => {
 
   for (const t of parsed.data.tasks) {
     try {
-      const hasPlate = t.notes && t.notes.includes("Plaka:");
+      const hasPlate = t.notes && (t.notes.includes("Plaka:") || t.notes.toLowerCase().includes("plaka"));
       const status = hasPlate ? "completed" : "draft";
 
       const [task] = await db

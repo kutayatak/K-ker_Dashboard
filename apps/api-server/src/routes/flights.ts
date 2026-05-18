@@ -60,7 +60,8 @@ async function runFlightCheck() {
       and(
         isNotNull(tasksTable.flightCode),
         sql`${tasksTable.scheduledTime} >= ${today} AND ${tasksTable.scheduledTime} < ${tomorrow}`,
-        sql`${tasksTable.status} NOT IN ('completed', 'cancelled')`
+        sql`${tasksTable.status} NOT IN ('completed', 'cancelled')`,
+        sql`${tasksTable.type} != 'hotel_pickup'`
       )
     );
 

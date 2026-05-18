@@ -32,14 +32,13 @@ import { useState, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 
-type TabKey = "queue" | "draft" | "assigned" | "in_progress" | "completed";
+type TabKey = "queue" | "draft" | "assigned" | "completed";
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
-  { key: "queue",       label: "Kuyruk",     short: "Kuyruk" },
-  { key: "draft",       label: "Taslak",     short: "Taslak" },
-  { key: "assigned",    label: "Atandı",     short: "Atandı" },
-  { key: "in_progress", label: "Yolda",      short: "Yolda"  },
-  { key: "completed",   label: "Tamamlandı", short: "Tamam"  },
+  { key: "queue",       label: "Kuyruk",       short: "Kuyruk" },
+  { key: "draft",       label: "Planlanmadı",  short: "Planlanmadı" },
+  { key: "assigned",    label: "Atandı",       short: "Atandı" },
+  { key: "completed",   label: "Tamamlandı",   short: "Tamam"  },
 ];
 
 export function Board() {
@@ -145,7 +144,6 @@ export function Board() {
 
   const draftTasks      = tasks.filter((t) => t.status === "draft");
   const assignedTasks   = tasks.filter((t) => t.status === "assigned");
-  const inProgressTasks = tasks.filter((t) => t.status === "in_progress");
   const completedTasks  = tasks.filter((t) => t.status === "completed");
 
   const notifyMutation      = useBatchNotifyTasks();
@@ -203,7 +201,6 @@ export function Board() {
     if (key === "queue")       return queue.length;
     if (key === "draft")       return draftTasks.length;
     if (key === "assigned")    return assignedTasks.length;
-    if (key === "in_progress") return inProgressTasks.length;
     if (key === "completed")   return completedTasks.length;
     return 0;
   };
@@ -331,16 +328,15 @@ export function Board() {
         </div>
 
         {/* ── Desktop: 4-column kanban ──────────────────────────────── */}
-        <div className="hidden md:grid flex-1 grid-cols-4 gap-4 h-full overflow-hidden">
+        <div className="hidden md:grid flex-1 grid-cols-3 gap-4 h-full overflow-hidden">
           <TaskColumn
-            title="Taslak"
+            title="Planlanmadı"
             tasks={draftTasks}
             selectable
             selectedIds={selectedTasks}
             onSelect={handleSelectTask}
           />
           <TaskColumn title="Atandı"     tasks={assignedTasks} />
-          <TaskColumn title="Yolda"      tasks={inProgressTasks} />
           <TaskColumn title="Tamamlandı" tasks={completedTasks} />
         </div>
 
@@ -374,9 +370,6 @@ export function Board() {
           )}
           {activeTab === "assigned" && (
             <MobileTaskList tasks={assignedTasks} />
-          )}
-          {activeTab === "in_progress" && (
-            <MobileTaskList tasks={inProgressTasks} />
           )}
           {activeTab === "completed" && (
             <MobileTaskList tasks={completedTasks} />
@@ -647,7 +640,7 @@ function TaskCard({
   const scheduledDate = new Date(task.scheduledTime);
   const createdDate   = new Date(task.createdAt);
   const diffMs        = scheduledDate.getTime() - createdDate.getTime();
-  const isDelayed     = diffMs > 2 * 60 * 1000 && !!task.flightCode;
+  const isDelayed     = diffMs > 2 * 60 * 1000 && !!task.flightCode && task.type !== "hotel_pickup";
 
   return (
     <div
