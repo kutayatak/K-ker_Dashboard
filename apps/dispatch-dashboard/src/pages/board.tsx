@@ -10,10 +10,18 @@ import {
   useListVehicles,
   useUpdateVehicle,
   useUpdateTask,
+  useDeleteTask,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Clock,
   Users,
@@ -27,6 +35,11 @@ import {
   ExternalLink,
   Plus,
   GripVertical,
+  MoreVertical,
+  CheckCircle2,
+  XCircle,
+  Pencil,
+  Send,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -145,7 +158,7 @@ export function Board() {
 
   const activeTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
   const isGelirTask = (t: Task) => t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
-  const isGiderTask = (t: Task) => t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gider" || t.type === "extra";
+  const isGiderTask = (t: Task) => t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gider" || (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
   
   const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
 
@@ -155,6 +168,7 @@ export function Board() {
 
   const notifyMutation      = useBatchNotifyTasks();
   const updateTaskMutation  = useUpdateTask();
+  const deleteTaskMutation  = useDeleteTask();
   const checkDelaysMutation = useCheckFlightDelays();
   const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
   const [lastUpdateCount, setLastUpdateCount] = useState<number | null>(null);
@@ -163,6 +177,24 @@ export function Board() {
   const [isNotifyDialogOpen, setIsNotifyDialogOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [assignVehicleId, setAssignVehicleId] = useState<string>("");
+
+  // Edit dialog state
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editForm, setEditForm] = useState<{
+    scheduledTime: string; pickupLocation: string; dropoffLocation: string;
+    passengerCount: string; flightCode: string; notes: string; fee: string;
+  }>({ scheduledTime: "", pickupLocation: "", dropoffLocation: "", passengerCount: "", flightCode: "", notes: "", fee: "" });
+
+  // Track tasks updated after notification (to show "Güncelleme Bildir")
+  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<number>>(new Set());
+
+  // Helper: generate WA URL for a phone + message
+  const makeWaUrl = (phone: string, message: string) => {
+    let p = phone.replace(/\D/g, "");
+    if (p.startsWith("0")) p = p.substring(1);
+    if (p.length === 10) p = "90" + p;
+    return `https://wa.me/${p}?text=${encodeURIComponent(message)}`;
+  };
 
   const handleSelectTask = (id: number) =>
     setSelectedTasks((prev) =>
@@ -176,17 +208,8 @@ export function Board() {
     const promises = selectedTasks.map((taskId) =>
       new Promise<void>((resolve, reject) => {
         updateTaskMutation.mutate(
-          {
-            id: taskId,
-            data: {
-              vehicleId: vId,
-              status: "draft",
-            },
-          },
-          {
-            onSuccess: () => resolve(),
-            onError: (err) => reject(err),
-          }
+          { id: taskId, data: { vehicleId: vId, status: "draft" } },
+          { onSuccess: () => resolve(), onError: (err) => reject(err) }
         );
       })
     );
@@ -200,6 +223,85 @@ export function Board() {
     } catch (err) {
       console.error("Batch assign vehicle failed:", err);
     }
+  };
+
+  const handleComplete = (task: Task) => {
+    updateTaskMutation.mutate(
+      { id: task.id, data: { status: "completed" } },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+    );
+  };
+
+  const handleCancel = (task: Task) => {
+    // If a vehicle was assigned, send a cancellation WA message first
+    if (task.vehicleId) {
+      const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
+      if (vehicle) {
+        const time = format(new Date(task.scheduledTime), "HH:mm");
+        const message = `Merhaba ${vehicle.driverName}, ${time}'de planlanmış ${task.pickupLocation} → ${task.dropoffLocation} transferi İPTAL EDİLMİŞTİR. İyi çalışmalar.`;
+        window.open(makeWaUrl(vehicle.phone, message), "_blank");
+      }
+    }
+    deleteTaskMutation.mutate(
+      { id: task.id },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+    );
+  };
+
+  const handleOpenEdit = (task: Task) => {
+    setEditingTask(task);
+    const dt = new Date(task.scheduledTime);
+    const local = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}T${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+    setEditForm({
+      scheduledTime: local,
+      pickupLocation: task.pickupLocation ?? "",
+      dropoffLocation: task.dropoffLocation ?? "",
+      passengerCount: String(task.passengerCount ?? 1),
+      flightCode: task.flightCode ?? "",
+      notes: task.notes ?? "",
+      fee: task.fee != null ? String(task.fee) : "",
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingTask) return;
+    const wasNotified = editingTask.status === "assigned";
+    updateTaskMutation.mutate(
+      {
+        id: editingTask.id,
+        data: {
+          scheduledTime: editForm.scheduledTime ? new Date(editForm.scheduledTime).toISOString() : undefined,
+          pickupLocation: editForm.pickupLocation || undefined,
+          dropoffLocation: editForm.dropoffLocation || undefined,
+          passengerCount: editForm.passengerCount ? Number(editForm.passengerCount) : undefined,
+          flightCode: editForm.flightCode || undefined,
+          notes: editForm.notes || undefined,
+          fee: editForm.fee ? Number(editForm.fee) : undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          if (wasNotified) {
+            setPendingUpdateIds((prev) => new Set(prev).add(editingTask.id));
+          }
+          setEditingTask(null);
+        },
+      }
+    );
+  };
+
+  const handleUpdateNotify = (task: Task) => {
+    const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
+    if (!vehicle) return;
+    const time = format(new Date(task.scheduledTime), "HH:mm");
+    const message = `Merhaba ${vehicle.driverName}, görevinizde GÜNCELLEME yapılmıştır:\n\n🕒 ${time} | ${task.pickupLocation} → ${task.dropoffLocation}\n${task.flightCode ? `✈️ ${task.flightCode}` : ""}\n\nLütfen bilginize alın.`;
+    window.open(makeWaUrl(vehicle.phone, message), "_blank");
+    setPendingUpdateIds((prev) => {
+      const next = new Set(prev);
+      next.delete(task.id);
+      return next;
+    });
   };
 
   const handleNotifySingle = (taskId: number) => {
@@ -393,6 +495,11 @@ export function Board() {
             selectedIds={selectedTasks}
             onSelect={handleSelectTask}
             onNotifySingle={handleNotifySingle}
+            onComplete={handleComplete}
+            onCancel={handleCancel}
+            onEdit={handleOpenEdit}
+            onUpdateNotify={handleUpdateNotify}
+            pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
             title="Gider"
@@ -401,11 +508,19 @@ export function Board() {
             selectedIds={selectedTasks}
             onSelect={handleSelectTask}
             onNotifySingle={handleNotifySingle}
+            onComplete={handleComplete}
+            onCancel={handleCancel}
+            onEdit={handleOpenEdit}
+            onUpdateNotify={handleUpdateNotify}
+            pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
             title="Tamamlandı"
             tasks={completedTasks}
-            onNotifySingle={handleNotifySingle}
+            showCompletedColors
+            onCancel={handleCancel}
+            onEdit={handleOpenEdit}
+            pendingUpdateIds={pendingUpdateIds}
           />
         </div>
 
@@ -436,6 +551,11 @@ export function Board() {
               selectedIds={selectedTasks}
               onSelect={handleSelectTask}
               onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              pendingUpdateIds={pendingUpdateIds}
             />
           )}
           {activeTab === "gider" && (
@@ -445,12 +565,20 @@ export function Board() {
               selectedIds={selectedTasks}
               onSelect={handleSelectTask}
               onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              pendingUpdateIds={pendingUpdateIds}
             />
           )}
           {activeTab === "completed" && (
             <MobileTaskList
               tasks={completedTasks}
-              onNotifySingle={handleNotifySingle}
+              showCompletedColors
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              pendingUpdateIds={pendingUpdateIds}
             />
           )}
         </div>
@@ -567,6 +695,98 @@ export function Board() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Task Dialog */}
+      <Dialog open={!!editingTask} onOpenChange={(open) => { if (!open) setEditingTask(null); }}>
+        <DialogContent className="sm:max-w-lg bg-card">
+          <DialogHeader>
+            <DialogTitle>İş Düzenle</DialogTitle>
+          </DialogHeader>
+          {editingTask && (
+            <div className="flex flex-col gap-3 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saat</label>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={editForm.scheduledTime}
+                    onChange={(e) => setEditForm(f => ({ ...f, scheduledTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Yolcu Sayısı</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={editForm.passengerCount}
+                    onChange={(e) => setEditForm(f => ({ ...f, passengerCount: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nereden</label>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={editForm.pickupLocation}
+                  onChange={(e) => setEditForm(f => ({ ...f, pickupLocation: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nereye</label>
+                <input
+                  type="text"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  value={editForm.dropoffLocation}
+                  onChange={(e) => setEditForm(f => ({ ...f, dropoffLocation: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Uçuş Kodu</label>
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={editForm.flightCode}
+                    onChange={(e) => setEditForm(f => ({ ...f, flightCode: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ücret (₺)</label>
+                  <input
+                    type="number"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={editForm.fee}
+                    onChange={(e) => setEditForm(f => ({ ...f, fee: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notlar</label>
+                <textarea
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                />
+              </div>
+              {editingTask.status === "assigned" && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2.5 py-2">
+                  ⚠️ Bu iş zaten şoföre bildirildi. Kaydettikten sonra "Güncelleme Bildir" butonu görünecektir.
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setEditingTask(null)}>İptal</Button>
+                <Button onClick={handleSaveEdit} disabled={updateTaskMutation.isPending}>
+                  {updateTaskMutation.isPending ? "Kaydediliyor..." : "Kaydet"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -688,12 +908,24 @@ function MobileTaskList({
   selectedIds = [],
   onSelect,
   onNotifySingle,
+  onComplete,
+  onCancel,
+  onEdit,
+  onUpdateNotify,
+  pendingUpdateIds = new Set(),
+  showCompletedColors = false,
 }: {
   tasks: Task[];
   selectable?: boolean;
   selectedIds?: number[];
   onSelect?: (id: number) => void;
   onNotifySingle?: (id: number) => void;
+  onComplete?: (task: Task) => void;
+  onCancel?: (task: Task) => void;
+  onEdit?: (task: Task) => void;
+  onUpdateNotify?: (task: Task) => void;
+  pendingUpdateIds?: Set<number>;
+  showCompletedColors?: boolean;
 }) {
   if (!tasks.length)
     return (
@@ -712,6 +944,12 @@ function MobileTaskList({
           onSelect={() => onSelect?.(t.id)}
           selectable={selectable}
           onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
+          onComplete={onComplete ? () => onComplete(t) : undefined}
+          onCancel={onCancel ? () => onCancel(t) : undefined}
+          onEdit={onEdit ? () => onEdit(t) : undefined}
+          onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
+          hasPendingUpdate={pendingUpdateIds.has(t.id)}
+          showCompletedColor={showCompletedColors}
           fullWidth
         />
       ))}
@@ -727,6 +965,12 @@ function TaskColumn({
   selectedIds = [],
   onSelect,
   onNotifySingle,
+  onComplete,
+  onCancel,
+  onEdit,
+  onUpdateNotify,
+  pendingUpdateIds = new Set(),
+  showCompletedColors = false,
 }: {
   title: string;
   tasks: Task[];
@@ -734,6 +978,12 @@ function TaskColumn({
   selectedIds?: number[];
   onSelect?: (id: number) => void;
   onNotifySingle?: (id: number) => void;
+  onComplete?: (task: Task) => void;
+  onCancel?: (task: Task) => void;
+  onEdit?: (task: Task) => void;
+  onUpdateNotify?: (task: Task) => void;
+  pendingUpdateIds?: Set<number>;
+  showCompletedColors?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2 h-full overflow-hidden">
@@ -754,6 +1004,12 @@ function TaskColumn({
             onSelect={() => onSelect?.(t.id)}
             selectable={selectable}
             onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
+            onComplete={onComplete ? () => onComplete(t) : undefined}
+            onCancel={onCancel ? () => onCancel(t) : undefined}
+            onEdit={onEdit ? () => onEdit(t) : undefined}
+            onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
+            hasPendingUpdate={pendingUpdateIds.has(t.id)}
+            showCompletedColor={showCompletedColors}
           />
         ))}
         {!tasks.length && <EmptyState text="Görev yok" />}
@@ -769,6 +1025,12 @@ function TaskCard({
   onSelect,
   selectable,
   onNotifySingle,
+  onComplete,
+  onCancel,
+  onEdit,
+  onUpdateNotify,
+  hasPendingUpdate = false,
+  showCompletedColor = false,
   fullWidth = false,
 }: {
   task: Task;
@@ -776,6 +1038,12 @@ function TaskCard({
   onSelect: () => void;
   selectable: boolean;
   onNotifySingle?: () => void;
+  onComplete?: () => void;
+  onCancel?: () => void;
+  onEdit?: () => void;
+  onUpdateNotify?: () => void;
+  hasPendingUpdate?: boolean;
+  showCompletedColor?: boolean;
   fullWidth?: boolean;
 }) {
   const scheduledDate = new Date(task.scheduledTime);
@@ -786,18 +1054,36 @@ function TaskCard({
   const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
   const isNotified = task.status === "assigned";
 
+  // Colour coding for completed column
+  const isGelirType = task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
+
+  let cardBg = "";
+  if (task.status === "completed") {
+    cardBg = showCompletedColor
+      ? isGelirType
+        ? "bg-emerald-50/60 border-emerald-200"
+        : "bg-blue-50/60 border-blue-200"
+      : "bg-card";
+  } else if (isAssignedButNotNotified) {
+    cardBg = "bg-amber-50/20 border-amber-300 border-dashed";
+  } else if (task.status === "draft") {
+    cardBg = "bg-muted/40 border-dashed";
+  } else {
+    cardBg = "bg-card";
+  }
+
   return (
     <div
       className={`relative overflow-hidden rounded-lg border transition-all
         ${selectable ? "cursor-pointer active:scale-[0.99]" : "cursor-default"}
         ${selected ? "ring-2 ring-primary border-transparent" : "hover:border-primary/40"}
-        ${isAssignedButNotNotified ? "bg-amber-50/20 border-amber-300 border-dashed" : task.status === "draft" ? "bg-muted/40 border-dashed" : "bg-card"}
+        ${cardBg}
         ${fullWidth ? "w-full" : ""}
       `}
       onClick={selectable ? onSelect : undefined}
     >
       <div className="p-3">
-        {/* Time + badge row */}
+        {/* Time + badge + action menu row */}
         <div className="flex items-center justify-between mb-2 gap-1">
           <div className="flex items-center gap-1.5 font-bold text-sm">
             <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
@@ -806,19 +1092,65 @@ function TaskCard({
             </span>
             {isDelayed && <AlertTriangle className="w-3 h-3 text-amber-500" />}
           </div>
-          <Badge
-            variant="outline"
-            className={`text-[10px] uppercase font-semibold px-1.5 shrink-0 ${
-              isDelayed ? "border-amber-400 text-amber-600 bg-amber-50/60" : ""
-            }`}
-          >
-            {task.flightCode ||
-              (task.type === "hotel_pickup"
-                ? "Otel"
-                : task.type === "airport_run"
-                ? "Havalimanı"
-                : "Ekstra")}
-          </Badge>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <Badge
+              variant="outline"
+              className={`text-[10px] uppercase font-semibold px-1.5 shrink-0 ${
+                isDelayed ? "border-amber-400 text-amber-600 bg-amber-50/60" :
+                showCompletedColor && isGelirType ? "border-emerald-300 text-emerald-700 bg-emerald-50/60" :
+                showCompletedColor && !isGelirType ? "border-blue-300 text-blue-700 bg-blue-50/60" : ""
+              }`}
+            >
+              {task.flightCode ||
+                (task.type === "hotel_pickup"
+                  ? "Otel"
+                  : task.type === "airport_run"
+                  ? "Havalimanı"
+                  : "Ekstra")}
+            </Badge>
+
+            {/* ── Action menu ── */}
+            {(onEdit || onComplete || onCancel) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {onEdit && (
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                      className="gap-2"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Düzenle
+                    </DropdownMenuItem>
+                  )}
+                  {onComplete && task.status !== "completed" && (
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); onComplete(); }}
+                      className="gap-2 text-emerald-700 focus:text-emerald-700"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
+                    </DropdownMenuItem>
+                  )}
+                  {(onEdit || onComplete) && onCancel && <DropdownMenuSeparator />}
+                  {onCancel && (
+                    <DropdownMenuItem
+                      onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                      className="gap-2 text-red-600 focus:text-red-600"
+                    >
+                      <XCircle className="w-3.5 h-3.5" /> İptal Et / Sil
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
 
         {/* Route */}
@@ -872,39 +1204,59 @@ function TaskCard({
           </div>
         )}
 
-        {/* Notification Status & Single Action */}
-        {task.vehicleId ? (
-          <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
-            {isNotified ? (
-              <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
-                <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">✓</span>
-                Bildirildi
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
-                <span className="w-3.5 h-3.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px]"></span>
-                Bildirilmedi
-              </span>
-            )}
-            
-            {!isNotified && onNotifySingle && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 px-2 text-[10px] bg-primary text-primary-foreground hover:bg-primary/95 border-none"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNotifySingle();
-                }}
-              >
-                Bildir
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="mt-2.5 pt-2 border-t flex items-center text-[11px] text-muted-foreground italic select-none">
-            Araç atanmadı
-          </div>
+        {/* Notification Status & Single Action (active tasks only) */}
+        {task.status !== "completed" && (
+          task.vehicleId ? (
+            <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+              {isNotified ? (
+                <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
+                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">✓</span>
+                  Bildirildi
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
+                  <span className="w-3.5 h-3.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px]"></span>
+                  Bildirilmedi
+                </span>
+              )}
+              
+              <div className="flex items-center gap-1">
+                {/* Güncelleme Bildir — shows when task was edited after being notified */}
+                {hasPendingUpdate && onUpdateNotify && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px] bg-amber-500 text-white hover:bg-amber-600 border-none"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateNotify();
+                    }}
+                  >
+                    <Send className="w-2.5 h-2.5 mr-1" />
+                    Güncelleme Bildir
+                  </Button>
+                )}
+                {/* Bildir — for unnotified assigned tasks */}
+                {!isNotified && !hasPendingUpdate && onNotifySingle && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px] bg-primary text-primary-foreground hover:bg-primary/95 border-none"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNotifySingle();
+                    }}
+                  >
+                    Bildir
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-2.5 pt-2 border-t flex items-center text-[11px] text-muted-foreground italic select-none">
+              Araç atanmadı
+            </div>
+          )
         )}
       </div>
 
@@ -914,7 +1266,8 @@ function TaskCard({
           ${task.status === "draft"       ? "bg-slate-300"  : ""}
           ${task.status === "assigned"    ? "bg-blue-400"   : ""}
           ${task.status === "in_progress" ? "bg-amber-400"  : ""}
-          ${task.status === "completed"   ? "bg-emerald-400": ""}
+          ${task.status === "completed" && isGelirType  ? "bg-emerald-500" : ""}
+          ${task.status === "completed" && !isGelirType ? "bg-blue-500"    : ""}
         `}
       />
     </div>
@@ -929,3 +1282,4 @@ function EmptyState({ text }: { text: string }) {
     </div>
   );
 }
+
