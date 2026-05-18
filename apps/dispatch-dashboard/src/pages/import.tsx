@@ -112,7 +112,7 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
-      dropoffLocation: "Ekstra",
+      dropoffLocation: "Ekstra Gider",
       scheduledTime: buildScheduledTime(timeRaw),
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };
@@ -129,7 +129,7 @@ function buildEkstraTask(row: any[], tableType: "left" | "right"): any | null {
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
-      dropoffLocation: "Ekstra",
+      dropoffLocation: "Ekstra Gelir",
       scheduledTime: buildScheduledTime(timeRaw),
       notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
     };

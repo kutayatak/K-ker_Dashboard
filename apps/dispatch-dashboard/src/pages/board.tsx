@@ -9,6 +9,7 @@ import {
   type Task,
   useListVehicles,
   useUpdateVehicle,
+  useUpdateTask,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,18 +33,18 @@ import { useState, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 
-type TabKey = "queue" | "draft" | "assigned" | "completed";
+type TabKey = "queue" | "gelir" | "gider" | "completed";
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "queue",       label: "Kuyruk",       short: "Kuyruk" },
-  { key: "draft",       label: "Planlanmadı",  short: "Planlanmadı" },
-  { key: "assigned",    label: "Atandı",       short: "Atandı" },
+  { key: "gelir",       label: "Gelir",        short: "Gelir" },
+  { key: "gider",       label: "Gider",        short: "Gider" },
   { key: "completed",   label: "Tamamlandı",   short: "Tamam"  },
 ];
 
 export function Board() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabKey>("draft");
+  const [activeTab, setActiveTab] = useState<TabKey>("gelir");
 
   const { data: queue = [] } = useGetVehicleQueue({
     query: { queryKey: ["/api/vehicles/queue"] },
@@ -142,22 +143,78 @@ export function Board() {
     query: { queryKey: getGetFlightTrackerStatusQueryKey(), refetchInterval: 30000 },
   });
 
-  const draftTasks      = tasks.filter((t) => t.status === "draft");
-  const assignedTasks   = tasks.filter((t) => t.status === "assigned");
-  const completedTasks  = tasks.filter((t) => t.status === "completed");
+  const activeTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
+  const isGelirTask = (t: Task) => t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
+  const isGiderTask = (t: Task) => t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gider" || t.type === "extra";
+  
+  const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
+
+  const gelirTasks     = activeTasks.filter(isGelirTask).sort(sortTasksByTime);
+  const giderTasks     = activeTasks.filter(isGiderTask).sort(sortTasksByTime);
+  const completedTasks = tasks.filter((t) => t.status === "completed").sort(sortTasksByTime);
 
   const notifyMutation      = useBatchNotifyTasks();
+  const updateTaskMutation  = useUpdateTask();
   const checkDelaysMutation = useCheckFlightDelays();
   const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
   const [lastUpdateCount, setLastUpdateCount] = useState<number | null>(null);
   
   const [notifyLinks, setNotifyLinks] = useState<{ driverName: string; phone: string; url: string; }[]>([]);
   const [isNotifyDialogOpen, setIsNotifyDialogOpen] = useState(false);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [assignVehicleId, setAssignVehicleId] = useState<string>("");
 
   const handleSelectTask = (id: number) =>
     setSelectedTasks((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+
+  const handleAssignVehicle = async () => {
+    if (!assignVehicleId || !selectedTasks.length) return;
+    const vId = Number(assignVehicleId);
+    
+    const promises = selectedTasks.map((taskId) =>
+      new Promise<void>((resolve, reject) => {
+        updateTaskMutation.mutate(
+          {
+            id: taskId,
+            data: {
+              vehicleId: vId,
+              status: "draft",
+            },
+          },
+          {
+            onSuccess: () => resolve(),
+            onError: (err) => reject(err),
+          }
+        );
+      })
+    );
+
+    try {
+      await Promise.all(promises);
+      setSelectedTasks([]);
+      setIsAssignOpen(false);
+      setAssignVehicleId("");
+      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+    } catch (err) {
+      console.error("Batch assign vehicle failed:", err);
+    }
+  };
+
+  const handleNotifySingle = (taskId: number) => {
+    notifyMutation.mutate(
+      { data: { taskIds: [taskId] } },
+      {
+        onSuccess: (response: any) => {
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          if (response?.links && response.links.length > 0) {
+            window.open(response.links[0].url, "_blank");
+          }
+        },
+      }
+    );
+  };
 
   const handleNotify = () => {
     if (!selectedTasks.length) return;
@@ -199,8 +256,8 @@ export function Board() {
 
   const tabCount = (key: TabKey) => {
     if (key === "queue")       return queue.length;
-    if (key === "draft")       return draftTasks.length;
-    if (key === "assigned")    return assignedTasks.length;
+    if (key === "gelir")       return gelirTasks.length;
+    if (key === "gider")       return giderTasks.length;
     if (key === "completed")   return completedTasks.length;
     return 0;
   };
@@ -330,14 +387,26 @@ export function Board() {
         {/* ── Desktop: 4-column kanban ──────────────────────────────── */}
         <div className="hidden md:grid flex-1 grid-cols-3 gap-4 h-full overflow-hidden">
           <TaskColumn
-            title="Planlanmadı"
-            tasks={draftTasks}
+            title="Gelir"
+            tasks={gelirTasks}
             selectable
             selectedIds={selectedTasks}
             onSelect={handleSelectTask}
+            onNotifySingle={handleNotifySingle}
           />
-          <TaskColumn title="Atandı"     tasks={assignedTasks} />
-          <TaskColumn title="Tamamlandı" tasks={completedTasks} />
+          <TaskColumn
+            title="Gider"
+            tasks={giderTasks}
+            selectable
+            selectedIds={selectedTasks}
+            onSelect={handleSelectTask}
+            onNotifySingle={handleNotifySingle}
+          />
+          <TaskColumn
+            title="Tamamlandı"
+            tasks={completedTasks}
+            onNotifySingle={handleNotifySingle}
+          />
         </div>
 
         {/* ── Mobile: single active tab ─────────────────────────────── */}
@@ -360,19 +429,29 @@ export function Board() {
               {queue.length === 0 && <EmptyState text="Kuyruk boş" />}
             </div>
           )}
-          {activeTab === "draft" && (
+          {activeTab === "gelir" && (
             <MobileTaskList
-              tasks={draftTasks}
+              tasks={gelirTasks}
               selectable
               selectedIds={selectedTasks}
               onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
             />
           )}
-          {activeTab === "assigned" && (
-            <MobileTaskList tasks={assignedTasks} />
+          {activeTab === "gider" && (
+            <MobileTaskList
+              tasks={giderTasks}
+              selectable
+              selectedIds={selectedTasks}
+              onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
+            />
           )}
           {activeTab === "completed" && (
-            <MobileTaskList tasks={completedTasks} />
+            <MobileTaskList
+              tasks={completedTasks}
+              onNotifySingle={handleNotifySingle}
+            />
           )}
         </div>
       </div>
@@ -383,7 +462,16 @@ export function Board() {
       {selectedTasks.length > 0 && (
         <>
           {/* Desktop inline button — shown above kanban via absolute positioning trick */}
-          <div className="hidden md:flex fixed bottom-6 right-6 z-50">
+          <div className="hidden md:flex fixed bottom-6 right-6 z-50 gap-2">
+            <Button
+              onClick={() => setIsAssignOpen(true)}
+              size="lg"
+              variant="secondary"
+              className="shadow-xl border bg-background hover:bg-muted"
+            >
+              <Car className="w-4 h-4 mr-2" />
+              Araç Ata ({selectedTasks.length})
+            </Button>
             <Button
               onClick={handleNotify}
               disabled={notifyMutation.isPending}
@@ -396,14 +484,22 @@ export function Board() {
           </div>
 
           {/* Mobile sticky bottom bar */}
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 p-4 bg-background/95 backdrop-blur border-t">
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 p-4 bg-background/95 backdrop-blur border-t flex gap-2">
+            <Button
+              onClick={() => setIsAssignOpen(true)}
+              variant="outline"
+              className="flex-1 h-12 text-sm font-semibold"
+            >
+              <Car className="w-5 h-5 mr-2" />
+              Araç Ata ({selectedTasks.length})
+            </Button>
             <Button
               onClick={handleNotify}
               disabled={notifyMutation.isPending}
-              className="w-full h-12 text-base font-semibold"
+              className="flex-1 h-12 text-sm font-semibold"
             >
               <BellRing className="w-5 h-5 mr-2" />
-              Seçilileri Bildir ({selectedTasks.length})
+              Bildir ({selectedTasks.length})
             </Button>
           </div>
         </>
@@ -433,6 +529,43 @@ export function Board() {
                 <ExternalLink className="w-4 h-4 text-emerald-600" />
               </Button>
             ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual Vehicle Assignment Dialog */}
+      <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle>Seçili İşlere Araç Ata</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Seçilen <strong>{selectedTasks.length}</strong> işe atanacak şoför ve aracı seçin:
+            </p>
+            
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şoför Seçin</label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                value={assignVehicleId}
+                onChange={(e) => setAssignVehicleId(e.target.value)}
+              >
+                <option value="">Şoför / Araç Seçin...</option>
+                {vehicles.map((v: any) => (
+                  <option key={v.id} value={v.id}>
+                    {v.plate} — {v.driverName} ({v.name}) {v.type === "outsource" ? "[ESNAF]" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setAssignVehicleId(""); }}>İptal</Button>
+              <Button onClick={handleAssignVehicle} disabled={!assignVehicleId || updateTaskMutation.isPending}>
+                {updateTaskMutation.isPending ? "Atanıyor..." : "Araç Ata"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -554,11 +687,13 @@ function MobileTaskList({
   selectable = false,
   selectedIds = [],
   onSelect,
+  onNotifySingle,
 }: {
   tasks: Task[];
   selectable?: boolean;
   selectedIds?: number[];
   onSelect?: (id: number) => void;
+  onNotifySingle?: (id: number) => void;
 }) {
   if (!tasks.length)
     return (
@@ -576,6 +711,7 @@ function MobileTaskList({
           selected={selectedIds.includes(t.id)}
           onSelect={() => onSelect?.(t.id)}
           selectable={selectable}
+          onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
           fullWidth
         />
       ))}
@@ -590,12 +726,14 @@ function TaskColumn({
   selectable = false,
   selectedIds = [],
   onSelect,
+  onNotifySingle,
 }: {
   title: string;
   tasks: Task[];
   selectable?: boolean;
   selectedIds?: number[];
   onSelect?: (id: number) => void;
+  onNotifySingle?: (id: number) => void;
 }) {
   return (
     <div className="flex flex-col gap-2 h-full overflow-hidden">
@@ -615,6 +753,7 @@ function TaskColumn({
             selected={selectedIds.includes(t.id)}
             onSelect={() => onSelect?.(t.id)}
             selectable={selectable}
+            onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
           />
         ))}
         {!tasks.length && <EmptyState text="Görev yok" />}
@@ -629,12 +768,14 @@ function TaskCard({
   selected,
   onSelect,
   selectable,
+  onNotifySingle,
   fullWidth = false,
 }: {
   task: Task;
   selected: boolean;
   onSelect: () => void;
   selectable: boolean;
+  onNotifySingle?: () => void;
   fullWidth?: boolean;
 }) {
   const scheduledDate = new Date(task.scheduledTime);
@@ -642,12 +783,15 @@ function TaskCard({
   const diffMs        = scheduledDate.getTime() - createdDate.getTime();
   const isDelayed     = diffMs > 2 * 60 * 1000 && !!task.flightCode && task.type !== "hotel_pickup";
 
+  const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
+  const isNotified = task.status === "assigned";
+
   return (
     <div
       className={`relative overflow-hidden rounded-lg border transition-all
         ${selectable ? "cursor-pointer active:scale-[0.99]" : "cursor-default"}
         ${selected ? "ring-2 ring-primary border-transparent" : "hover:border-primary/40"}
-        ${task.status === "draft" ? "bg-muted/40 border-dashed" : "bg-card"}
+        ${isAssignedButNotNotified ? "bg-amber-50/20 border-amber-300 border-dashed" : task.status === "draft" ? "bg-muted/40 border-dashed" : "bg-card"}
         ${fullWidth ? "w-full" : ""}
       `}
       onClick={selectable ? onSelect : undefined}
@@ -725,6 +869,41 @@ function TaskCard({
           <div className="mt-2 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 flex items-center gap-1">
             <Plane className="w-3 h-3 shrink-0" />
             Uçuş rötar güncellendi
+          </div>
+        )}
+
+        {/* Notification Status & Single Action */}
+        {task.vehicleId ? (
+          <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+            {isNotified ? (
+              <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
+                <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">✓</span>
+                Bildirildi
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
+                <span className="w-3.5 h-3.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px]"></span>
+                Bildirilmedi
+              </span>
+            )}
+            
+            {!isNotified && onNotifySingle && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[10px] bg-primary text-primary-foreground hover:bg-primary/95 border-none"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNotifySingle();
+                }}
+              >
+                Bildir
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="mt-2.5 pt-2 border-t flex items-center text-[11px] text-muted-foreground italic select-none">
+            Araç atanmadı
           </div>
         )}
       </div>
