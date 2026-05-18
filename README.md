@@ -1,45 +1,40 @@
-# [Project name]
+# K-ker Dashboard
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+K-ker Dashboard, görev yönetimi, araç takibi ve operasyonel süreçleri yönetmek için tasarlanmış modern bir web uygulamasıdır.
 
-## Run & Operate
+## Kurulum ve Çalıştırma
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+Gereksinimler:
+- Node.js 24+
+- pnpm 10+
+- PostgreSQL Veritabanı (örn. Neon, Supabase)
 
-## Stack
+### Adımlar:
+1. Depoyu klonlayın ve klasöre girin: `cd K-ker_Dashboard`
+2. Bağımlılıkları yükleyin: `pnpm install`
+3. Çevre değişkenlerini kopyalayın: `.env.example` dosyasını `.env` olarak çoğaltın ve `DATABASE_URL` değerini ayarlayın.
+4. Geliştirme sunucusunu başlatın:
+   - API: `pnpm --filter @workspace/api-server run dev` (Port 5000)
+   - Frontend: `pnpm --filter @workspace/dispatch-dashboard run dev` (Port 5173)
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+### Diğer Komutlar
+- `pnpm run typecheck` — Tüm paketlerde tip kontrolü yapar.
+- `pnpm run build` — Uygulamayı üretime hazırlar.
+- `pnpm run test` — Testleri (Vitest) çalıştırır.
 
-## Where things live
+## Teknoloji Yığını
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- **Çalışma Alanı:** pnpm workspaces, Node.js 24, TypeScript 5.9
+- **Frontend (`apps/dispatch-dashboard`):** React, Vite, TailwindCSS, Radix UI, React Query, Wouter.
+- **Backend (`apps/api-server`):** Express 5, Drizzle ORM, Zod, helmet.
+- **Dağıtım:** Vercel (Serverless Functions).
 
-## Architecture decisions
+## Mimari Kararlar
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
+1. **Monorepo Yaklaşımı:** Frontend, backend ve ortak paylaşılan tiplerin (Zod/Drizzle şemaları) tek bir repoda yönetilmesi.
+2. **Serverless Backend:** Express API, Vercel üzerinde `api/index.js` aracılığıyla serverless fonksiyon olarak çalıştırılır. Bu yüzden Vercel deploylarında `outputDirectory` olarak frontend'in build dizini, API istekleri için ise backend modülü yönlendirilir.
+3. **Güvenlik ve Performans:** Frontend PWA (Progressive Web App) desteği ile asenkron (lazy) sayfa yüklemelerine sahiptir. Backend ise global hata yönetimi (Error Handler) ve oran sınırlayıcı (Rate Limiting) gibi savunma katmanlarıyla desteklenmiştir.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See the `pnpm-workspace.yaml` for workspace configuration.
