@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, vehiclesTable } from "@workspace/db";
-import { eq, asc, isNotNull } from "drizzle-orm";
+import { eq, asc, isNotNull, and } from "drizzle-orm";
 import {
   ListVehiclesQueryParams,
   CreateVehicleBody,
@@ -36,7 +36,12 @@ router.get("/queue", async (_req, res) => {
   const queue = await db
     .select()
     .from(vehiclesTable)
-    .where(eq(vehiclesTable.status, "empty"))
+    .where(
+      and(
+        eq(vehiclesTable.status, "empty"),
+        eq(vehiclesTable.type, "fixed")
+      )
+    )
     .orderBy(asc(vehiclesTable.queuePosition));
   return res.json(queue);
 });
@@ -59,7 +64,12 @@ router.post("/queue/reorder", async (req, res) => {
     const queue = await db
       .select()
       .from(vehiclesTable)
-      .where(eq(vehiclesTable.status, "empty"))
+      .where(
+        and(
+          eq(vehiclesTable.status, "empty"),
+          eq(vehiclesTable.type, "fixed")
+        )
+      )
       .orderBy(asc(vehiclesTable.queuePosition));
 
     return res.json(queue);

@@ -130,9 +130,9 @@ export function Board() {
     });
   };
 
-  // Filter vehicles that are not in the queue
+  // Filter vehicles that are not in the queue and are 'fixed'
   const availableVehicles = vehicles.filter(
-    (v: any) => !v.queuePosition || v.status !== "empty"
+    (v: any) => v.type === "fixed" && (!v.queuePosition || v.status !== "empty")
   );
   const { data: tasks = [] } = useListTasks(
     {},
