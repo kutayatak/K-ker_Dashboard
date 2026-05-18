@@ -148,6 +148,10 @@ export interface TaskInput {
   vehicleId?: number;
   notes?: string;
   fee?: number;
+  km?: number;
+  importKey?: string;
+  rowIndex?: number;
+  tableType?: "left" | "right";
 }
 
 export type TaskUpdateStatus = typeof TaskUpdateStatus[keyof typeof TaskUpdateStatus];
@@ -178,14 +182,20 @@ export interface TaskUpdate {
   notes?: string | null;
   /** @nullable */
   fee?: number | null;
+  /** @nullable */
+  km?: number | null;
 }
 
 export interface TaskImport {
   tasks: TaskInput[];
+  excelBase64?: string;
+  excelDate?: string;
+  excelFilename?: string;
 }
 
 export interface ImportResult {
   created: number;
+  updated: number;
   skipped: number;
   tasks?: Task[];
 }
