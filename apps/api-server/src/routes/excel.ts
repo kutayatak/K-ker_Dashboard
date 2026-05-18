@@ -84,7 +84,7 @@ router.get("/download", async (req, res) => {
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="sevkiyat_${date}.xlsx"`);
-  res.send(outBuf);
+  return res.send(outBuf);
 });
 
 // GET /excel/has?date=YYYY-MM-DD
