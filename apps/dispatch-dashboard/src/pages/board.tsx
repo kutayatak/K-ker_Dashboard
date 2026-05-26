@@ -41,11 +41,14 @@ import {
   Pencil,
   Send,
   Download,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 type TabKey = "queue" | "gelir" | "gider" | "technical" | "completed" | "cancelled";
 
@@ -159,6 +162,41 @@ export function Board() {
   const { data: trackerStatus, refetch: refetchStatus } = useGetFlightTrackerStatus({
     query: { queryKey: getGetFlightTrackerStatusQueryKey(), refetchInterval: 30000 },
   });
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (!date) return;
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    setSelectedDate(`${yyyy}-${mm}-${dd}`);
+  };
+
+  const getCalendarDayStatus = (date: Date) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    const matchTasks = tasks.filter((t: any) => {
+      const tDate = new Date(t.scheduledTime);
+      const tyyyy = tDate.getFullYear();
+      const tmm = String(tDate.getMonth() + 1).padStart(2, "0");
+      const tdd = String(tDate.getDate()).padStart(2, "0");
+      return `${tyyyy}-${tmm}-${tdd}` === dateStr;
+    });
+
+    if (matchTasks.length === 0) return null;
+
+    const allCompleted = matchTasks.every(
+      (t: any) => t.status === "completed" || t.status === "cancelled"
+    );
+    return allCompleted ? "completed" : "uncompleted";
+  };
+
+  const calendarModifiers = {
+    completed: (date: Date) => getCalendarDayStatus(date) === "completed",
+    uncompleted: (date: Date) => getCalendarDayStatus(date) === "uncompleted",
+  };
 
   // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
   const shiftStart = new Date(selectedDate);
@@ -442,12 +480,27 @@ export function Board() {
           </div>
           <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1 rounded-md border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-muted-foreground pl-1">Tarih:</span>
-            <input
-              type="date"
-              className="rounded-md border border-input bg-card px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border bg-card px-3 text-xs font-medium focus-visible:ring-2 hover:bg-slate-50 dark:hover:bg-slate-900 flex items-center gap-2 rounded-md"
+                >
+                  <CalendarIcon className="w-3.5 h-3.5 text-blue-500" />
+                  {format(new Date(selectedDate), "dd MMMM yyyy", { locale: tr })}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 border shadow-md rounded-md bg-popover z-50" align="start">
+                <Calendar
+                  mode="single"
+                  selected={new Date(selectedDate)}
+                  onSelect={handleDateSelect}
+                  modifiers={calendarModifiers}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
