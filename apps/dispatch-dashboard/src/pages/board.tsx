@@ -507,7 +507,6 @@ export function Board() {
                   selected={selectedDate ? new Date(selectedDate) : undefined}
                   onSelect={handleDateSelect}
                   modifiers={calendarModifiers}
-                  initialFocus
                 />
               </PopoverContent>
             </Popover>

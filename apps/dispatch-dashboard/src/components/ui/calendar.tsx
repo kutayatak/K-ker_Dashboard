@@ -175,7 +175,7 @@ function Calendar({
 function CalendarDayButton({
   className,
   day,
-  modifiers,
+  modifiers = {},
   ...props
 }: React.ComponentProps<typeof DayButton>) {
   const defaultClassNames = getDefaultClassNames()
