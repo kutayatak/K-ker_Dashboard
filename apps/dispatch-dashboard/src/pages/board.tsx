@@ -505,6 +505,10 @@ export function Board() {
                   selected={selectedDate ? new Date(selectedDate) : undefined}
                   onSelect={handleDateSelect}
                   modifiers={calendarModifiers}
+                  modifiersClassNames={{
+                    completed: "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
+                    uncompleted: "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
+                  }}
                 />
               </PopoverContent>
             </Popover>

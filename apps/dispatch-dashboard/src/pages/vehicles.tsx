@@ -7,12 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit2, Trash2, Phone, Users } from "lucide-react";
+import { Plus, Edit2, Trash2, Phone, RefreshCw, Car } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function Vehicles() {
   const queryClient = useQueryClient();
-  const { data: vehicles = [], isLoading } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
+  const { data: vehicles = [], isLoading, isError, refetch } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
   
   const createMutation = useCreateVehicle();
   const updateMutation = useUpdateVehicle();
@@ -183,9 +183,47 @@ export function Vehicles() {
       {/* Premium Grouped Vehicles Cards Grid */}
       <div className="flex-1 overflow-auto pr-1">
         {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Araçlar yükleniyor...</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="flex flex-col overflow-hidden border-t-4 border-t-slate-200 dark:border-t-slate-700 animate-pulse">
+                <div className="p-5 border-b bg-muted/20 flex items-start justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-5 bg-muted rounded w-2/3" />
+                    <div className="h-4 bg-muted rounded w-1/3" />
+                  </div>
+                  <div className="h-6 w-14 bg-muted rounded-full" />
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="h-3 bg-muted rounded w-1/4 mb-2" />
+                  <div className="h-12 bg-muted rounded-lg" />
+                  <div className="h-12 bg-muted rounded-lg" />
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+            <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
+              <RefreshCw className="w-7 h-7 text-red-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-red-600 dark:text-red-400">API Sunucusuna Bağlanılamadı</p>
+              <p className="text-sm text-muted-foreground mt-1">API sunucusunun çalıştığını kontrol edin.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="w-3.5 h-3.5" /> Tekrar Dene
+            </Button>
+          </div>
         ) : groupedVehicles.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">Araç bulunamadı</div>
+          <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+            <div className="w-14 h-14 rounded-full bg-muted/60 flex items-center justify-center">
+              <Car className="w-7 h-7 text-muted-foreground/60" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Henüz araç eklenmemiş</p>
+              <p className="text-sm text-muted-foreground mt-1">Excel içe aktararak veya manuel olarak araç ekleyebilirsiniz.</p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {groupedVehicles.map((g: any) => (

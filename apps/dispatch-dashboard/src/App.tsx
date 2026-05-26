@@ -14,7 +14,17 @@ const ImportTasks = lazy(() => import("@/pages/import").then(m => ({ default: m.
 const Reports = lazy(() => import("@/pages/reports").then(m => ({ default: m.Reports })));
 const ExcelView = lazy(() => import("@/pages/excel-view").then(m => ({ default: m.ExcelView })));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,       // 30 sn önbellek — aynı sayfada tekrar fetch yok
+      gcTime: 300_000,         // 5 dk bellekte tut
+      retry: 1,                // hata durumunda yalnızca 1 tekrar
+      retryDelay: 1000,        // 1 sn bekle
+      refetchOnWindowFocus: false, // sekmeye geçince tekrar istek yapmasın
+    },
+  },
+});
 
 function App() {
   return (

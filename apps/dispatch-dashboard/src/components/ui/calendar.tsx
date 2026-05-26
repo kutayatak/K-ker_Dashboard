@@ -175,7 +175,7 @@ function Calendar({
 function CalendarDayButton({
   className,
   day,
-  modifiers = {},
+  modifiers,
   ...props
 }: React.ComponentProps<typeof DayButton>) {
   const defaultClassNames = getDefaultClassNames()
@@ -201,20 +201,8 @@ function CalendarDayButton({
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
       className={cn(
-        "group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] [&>span]:text-xs [&>span]:opacity-70",
+        "data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground data-[range-middle=true]:bg-accent data-[range-middle=true]:text-accent-foreground data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-ring/50 flex aspect-square h-auto w-full min-w-[--cell-size] flex-col gap-1 font-normal leading-none data-[range-end=true]:rounded-md data-[range-middle=true]:rounded-none data-[range-start=true]:rounded-md group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:ring-[3px] [&>span]:text-xs [&>span]:opacity-70",
         defaultClassNames.day,
-        
-        // Custom highlights
-        modifiers.completed && "bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:text-white dark:hover:bg-emerald-700 font-semibold shadow-sm",
-        modifiers.uncompleted && "bg-amber-400 text-amber-950 hover:bg-amber-500 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-600 font-semibold shadow-sm",
-        
-        // Selected highlight logic: use high-contrast ring if completed/uncompleted, default bg-primary otherwise
-        modifiers.selected && !modifiers.range_start && !modifiers.range_end && !modifiers.range_middle && (
-          (modifiers.completed || modifiers.uncompleted)
-            ? "ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-slate-900 z-20"
-            : "bg-primary text-primary-foreground hover:bg-primary/90"
-        ),
-        
         className
       )}
       {...props}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListTasks,
@@ -10,8 +10,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileSpreadsheet, Download, RefreshCw, Plus, Users, Clock, Plane } from "lucide-react";
+import { FileSpreadsheet, Download, RefreshCw, Plus, Users, Clock, Plane, Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
+import { tr } from "date-fns/locale";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 type ExtendedTask = Task & {
   rowIndex?: number | null;
@@ -31,6 +34,41 @@ export function ExcelView() {
   const { data: vehicles = [] } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
 
   const updateTaskMutation = useUpdateTask();
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (!date) return;
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    setSelectedDate(`${yyyy}-${mm}-${dd}`);
+  };
+
+  // Pre-compute calendar day status
+  const { completedDays, uncompletedDays } = useMemo(() => {
+    const byDate = new Map<string, { hasActive: boolean }>();
+    if (Array.isArray(tasks)) {
+      for (const t of tasks as any[]) {
+        if (!t?.scheduledTime) continue;
+        const d = new Date(t.scheduledTime);
+        if (isNaN(d.getTime())) continue;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const prev = byDate.get(key);
+        const isActive = t.status !== "completed" && t.status !== "cancelled";
+        byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
+      }
+    }
+    const completed: Date[] = [];
+    const uncompleted: Date[] = [];
+    for (const [key, { hasActive }] of byDate.entries()) {
+      const [y, m, dd] = key.split("-").map(Number);
+      const dateObj = new Date(y, m - 1, dd);
+      if (hasActive) uncompleted.push(dateObj);
+      else completed.push(dateObj);
+    }
+    return { completedDays: completed, uncompletedDays: uncompleted };
+  }, [tasks]);
+
+  const calendarModifiers = { completed: completedDays, uncompleted: uncompletedDays };
 
   // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
   const shiftStart = new Date(selectedDate);
@@ -171,12 +209,30 @@ export function ExcelView() {
           </div>
           <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1.5 rounded-md border border-slate-100 dark:border-slate-800">
             <span className="text-xs font-semibold text-muted-foreground pl-1">Vardiya Tarihi:</span>
-            <input
-              type="date"
-              className="rounded-md border border-input bg-card px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border bg-card px-3 text-xs font-medium focus-visible:ring-2 hover:bg-slate-50 dark:hover:bg-slate-900 flex items-center gap-2 rounded-md"
+                >
+                  <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
+                  {selectedDate ? format(new Date(selectedDate), "dd MMMM yyyy", { locale: tr }) : ""}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 border shadow-md rounded-md bg-popover z-50" align="start">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate ? new Date(selectedDate) : undefined}
+                  onSelect={handleDateSelect}
+                  modifiers={calendarModifiers}
+                  modifiersClassNames={{
+                    completed: "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
+                    uncompleted: "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
