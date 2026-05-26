@@ -44,7 +44,7 @@ import {
   Calendar as CalendarIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -171,36 +171,34 @@ export function Board() {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  const getCalendarDayStatus = (date: Date | undefined | null) => {
-    if (!date || isNaN(date.getTime())) return null;
-    if (!Array.isArray(tasks)) return null;
-
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const dd = String(date.getDate()).padStart(2, "0");
-    const dateStr = `${yyyy}-${mm}-${dd}`;
-
-    const matchTasks = tasks.filter((t: any) => {
-      if (!t || !t.scheduledTime) return false;
-      const tDate = new Date(t.scheduledTime);
-      if (isNaN(tDate.getTime())) return false;
-      const tyyyy = tDate.getFullYear();
-      const tmm = String(tDate.getMonth() + 1).padStart(2, "0");
-      const tdd = String(tDate.getDate()).padStart(2, "0");
-      return `${tyyyy}-${tmm}-${tdd}` === dateStr;
-    });
-
-    if (matchTasks.length === 0) return null;
-
-    const allCompleted = matchTasks.every(
-      (t: any) => t.status === "completed" || t.status === "cancelled"
-    );
-    return allCompleted ? "completed" : "uncompleted";
-  };
+  // Pre-compute Date[] arrays for calendar day coloring (much more stable than function matchers)
+  const { completedDays, uncompletedDays } = useMemo(() => {
+    const byDate = new Map<string, { hasActive: boolean }>();
+    if (Array.isArray(tasks)) {
+      for (const t of tasks as any[]) {
+        if (!t?.scheduledTime) continue;
+        const d = new Date(t.scheduledTime);
+        if (isNaN(d.getTime())) continue;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const prev = byDate.get(key);
+        const isActive = t.status !== "completed" && t.status !== "cancelled";
+        byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
+      }
+    }
+    const completed: Date[] = [];
+    const uncompleted: Date[] = [];
+    for (const [key, { hasActive }] of byDate.entries()) {
+      const [y, m, dd] = key.split("-").map(Number);
+      const dateObj = new Date(y, m - 1, dd);
+      if (hasActive) uncompleted.push(dateObj);
+      else completed.push(dateObj);
+    }
+    return { completedDays: completed, uncompletedDays: uncompleted };
+  }, [tasks]);
 
   const calendarModifiers = {
-    completed: (date: Date) => getCalendarDayStatus(date) === "completed",
-    uncompleted: (date: Date) => getCalendarDayStatus(date) === "uncompleted",
+    completed: completedDays,
+    uncompleted: uncompletedDays,
   };
 
   // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
