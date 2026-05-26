@@ -171,14 +171,19 @@ export function Board() {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  const getCalendarDayStatus = (date: Date) => {
+  const getCalendarDayStatus = (date: Date | undefined | null) => {
+    if (!date || isNaN(date.getTime())) return null;
+    if (!Array.isArray(tasks)) return null;
+
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, "0");
     const dd = String(date.getDate()).padStart(2, "0");
     const dateStr = `${yyyy}-${mm}-${dd}`;
 
     const matchTasks = tasks.filter((t: any) => {
+      if (!t || !t.scheduledTime) return false;
       const tDate = new Date(t.scheduledTime);
+      if (isNaN(tDate.getTime())) return false;
       const tyyyy = tDate.getFullYear();
       const tmm = String(tDate.getMonth() + 1).padStart(2, "0");
       const tdd = String(tDate.getDate()).padStart(2, "0");
@@ -488,13 +493,18 @@ export function Board() {
                   className="h-8 border bg-card px-3 text-xs font-medium focus-visible:ring-2 hover:bg-slate-50 dark:hover:bg-slate-900 flex items-center gap-2 rounded-md"
                 >
                   <CalendarIcon className="w-3.5 h-3.5 text-blue-500" />
-                  {format(new Date(selectedDate), "dd MMMM yyyy", { locale: tr })}
+                  {(() => {
+                    if (!selectedDate) return "";
+                    const d = new Date(selectedDate);
+                    if (isNaN(d.getTime())) return "";
+                    return format(d, "dd MMMM yyyy", { locale: tr });
+                  })()}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0 border shadow-md rounded-md bg-popover z-50" align="start">
                 <Calendar
                   mode="single"
-                  selected={new Date(selectedDate)}
+                  selected={selectedDate ? new Date(selectedDate) : undefined}
                   onSelect={handleDateSelect}
                   modifiers={calendarModifiers}
                   initialFocus
