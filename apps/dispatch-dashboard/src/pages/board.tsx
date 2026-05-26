@@ -47,18 +47,21 @@ import { useState, useEffect } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 
-type TabKey = "queue" | "gelir" | "gider" | "completed";
+type TabKey = "queue" | "gelir" | "gider" | "technical" | "completed" | "cancelled";
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "queue",       label: "Kuyruk",       short: "Kuyruk" },
   { key: "gelir",       label: "Gelir",        short: "Gelir" },
   { key: "gider",       label: "Gider",        short: "Gider" },
+  { key: "technical",   label: "Teknik İşler",  short: "Teknik" },
   { key: "completed",   label: "Tamamlandı",   short: "Tamam"  },
+  { key: "cancelled",   label: "İptaller",     short: "İptal"  },
 ];
 
 export function Board() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>("gelir");
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
 
   const { data: queue = [] } = useGetVehicleQueue({
     query: { queryKey: ["/api/vehicles/queue"] },
@@ -157,15 +160,44 @@ export function Board() {
     query: { queryKey: getGetFlightTrackerStatusQueryKey(), refetchInterval: 30000 },
   });
 
-  const activeTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
+  // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
+  const shiftStart = new Date(selectedDate);
+  shiftStart.setHours(6, 0, 0, 0);
+  const shiftEnd = new Date(shiftStart);
+  shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+  const dayTasks = tasks.filter((t) => {
+    const time = new Date(t.scheduledTime);
+    return time >= shiftStart && time < shiftEnd;
+  });
+
+  const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
+
+  const activeTasks = dayTasks.filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.type !== "technical");
+  const technicalTasks = dayTasks.filter((t) => t.type === "technical" && t.status !== "completed" && t.status !== "cancelled").sort(sortTasksByTime);
   const isGelirTask = (t: Task) => t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
   const isGiderTask = (t: Task) => t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gider" || (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
-  
-  const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
 
   const gelirTasks     = activeTasks.filter(isGelirTask).sort(sortTasksByTime);
   const giderTasks     = activeTasks.filter(isGiderTask).sort(sortTasksByTime);
-  const completedTasks = tasks.filter((t) => t.status === "completed").sort(sortTasksByTime);
+  const completedTasks = dayTasks.filter((t) => t.status === "completed").sort(sortTasksByTime);
+  const cancelledTasks = dayTasks.filter((t) => t.status === "cancelled").sort(sortTasksByTime);
+
+  const handleReactivate = (task: Task) => {
+    updateTaskMutation.mutate(
+      { id: task.id, data: { status: "draft", vehicleId: null } },
+      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+    );
+  };
+
+  const handleDeletePermanently = (task: Task) => {
+    if (confirm("Bu iptal edilmiş görevi kalıcı olarak silmek istediğinize emin misiniz?")) {
+      deleteTaskMutation.mutate(
+        { id: task.id },
+        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+      );
+    }
+  };
 
   const notifyMutation      = useBatchNotifyTasks();
   const updateTaskMutation  = useUpdateTask();
@@ -226,6 +258,12 @@ export function Board() {
     }
   };
 
+  const handleOpenAssignSingle = (taskId: number) => {
+    setSelectedTasks([taskId]);
+    setAssignVehicleId("");
+    setIsAssignOpen(true);
+  };
+
   const handleDropAssign = (taskId: number, vehicleId: number) => {
     updateTaskMutation.mutate(
       { id: taskId, data: { vehicleId, status: "draft" } },
@@ -241,8 +279,7 @@ export function Board() {
   };
 
   const handleDownloadExcel = () => {
-    const today = new Date().toISOString().split("T")[0];
-    window.open(`/api/excel/download?date=${today}`, "_blank");
+    window.open(`/api/excel/download?date=${selectedDate}`, "_blank");
   };
 
   const handleCancel = (task: Task) => {
@@ -261,8 +298,9 @@ export function Board() {
         window.open(makeWaUrl(vehicle.phone, message), "_blank");
       }
     }
-    deleteTaskMutation.mutate(
-      { id: task.id },
+    // Soft-cancel task by setting status to cancelled and clearing vehicleId
+    updateTaskMutation.mutate(
+      { id: task.id, data: { status: "cancelled", vehicleId: null } },
       { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
     );
   };
@@ -384,7 +422,9 @@ export function Board() {
     if (key === "queue")       return queue.length;
     if (key === "gelir")       return gelirTasks.length;
     if (key === "gider")       return giderTasks.length;
+    if (key === "technical")   return technicalTasks.length;
     if (key === "completed")   return completedTasks.length;
+    if (key === "cancelled")   return cancelledTasks.length;
     return 0;
   };
 
@@ -393,11 +433,22 @@ export function Board() {
 
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
-            Sevkiyat Paneli
-          </h1>
-          <p className="text-muted-foreground text-xs md:text-sm">Gerçek zamanlı terminal görünümü</p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
+              Sevkiyat Paneli
+            </h1>
+            <p className="text-muted-foreground text-xs md:text-sm">Gerçek zamanlı terminal görünümü</p>
+          </div>
+          <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1 rounded-md border border-slate-100 dark:border-slate-800">
+            <span className="text-xs font-semibold text-muted-foreground pl-1">Tarih:</span>
+            <input
+              type="date"
+              className="rounded-md border border-input bg-card px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+          </div>
         </div>
 
         {/* Flight tracker — compact on mobile, expanded on desktop */}
@@ -457,31 +508,50 @@ export function Board() {
       </div>
 
       {/* ── Mobile tab bar ───────────────────────────────────────────── */}
-      <div className="flex md:hidden border-b mb-3 overflow-x-auto scrollbar-none shrink-0 -mx-4 px-4">
-        {TABS.map((tab) => {
-          const count = tabCount(tab.key);
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0
-                ${active
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-            >
-              {tab.short}
-              <span
-                className={`inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-mono px-1
-                  ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {(() => {
+        const hasUnnotifiedTasks = (key: TabKey) => {
+          let targetTasks: Task[] = [];
+          if (key === "gelir") targetTasks = gelirTasks;
+          else if (key === "gider") targetTasks = giderTasks;
+          else if (key === "technical") targetTasks = technicalTasks;
+          return targetTasks.some((t) => t.vehicleId != null && t.status === "draft");
+        };
+
+        return (
+          <div className="flex md:hidden border-b mb-3 overflow-x-auto scrollbar-none shrink-0 -mx-4 px-4">
+            {TABS.map((tab) => {
+              const count = tabCount(tab.key);
+              const active = activeTab === tab.key;
+              const showPulse = hasUnnotifiedTasks(tab.key);
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0
+                    ${active
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                >
+                  {tab.short}
+                  {showPulse && (
+                    <span className="relative flex h-1.5 w-1.5 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                    </span>
+                  )}
+                  <span
+                    className={`inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-mono px-1
+                      ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden flex gap-4 min-h-0">
@@ -520,7 +590,7 @@ export function Board() {
         </div>
 
         {/* ── Desktop: 4-column kanban ──────────────────────────────── */}
-        <div className="hidden md:grid flex-1 grid-cols-3 gap-4 h-full overflow-hidden">
+        <div className="hidden md:grid flex-1 grid-cols-5 gap-3 h-full overflow-hidden">
           <TaskColumn
             title="Gelir"
             tasks={gelirTasks}
@@ -533,6 +603,7 @@ export function Board() {
             onEdit={handleOpenEdit}
             onUpdateNotify={handleUpdateNotify}
             onDropAssign={handleDropAssign}
+            onAssignSingle={handleOpenAssignSingle}
             pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
@@ -547,6 +618,22 @@ export function Board() {
             onEdit={handleOpenEdit}
             onUpdateNotify={handleUpdateNotify}
             onDropAssign={handleDropAssign}
+            onAssignSingle={handleOpenAssignSingle}
+            pendingUpdateIds={pendingUpdateIds}
+          />
+          <TaskColumn
+            title="Teknik İşler"
+            tasks={technicalTasks}
+            selectable
+            selectedIds={selectedTasks}
+            onSelect={handleSelectTask}
+            onNotifySingle={handleNotifySingle}
+            onComplete={handleComplete}
+            onCancel={handleCancel}
+            onEdit={handleOpenEdit}
+            onUpdateNotify={handleUpdateNotify}
+            onDropAssign={handleDropAssign}
+            onAssignSingle={handleOpenAssignSingle}
             pendingUpdateIds={pendingUpdateIds}
           />
           <TaskColumn
@@ -554,6 +641,15 @@ export function Board() {
             tasks={completedTasks}
             showCompletedColors
             onCancel={handleCancel}
+            onEdit={handleOpenEdit}
+            pendingUpdateIds={pendingUpdateIds}
+          />
+          <TaskColumn
+            title="İptaller"
+            tasks={cancelledTasks}
+            showCancelledColors
+            onReactivate={handleReactivate}
+            onDeletePermanently={handleDeletePermanently}
             onEdit={handleOpenEdit}
             pendingUpdateIds={pendingUpdateIds}
           />
@@ -591,6 +687,7 @@ export function Board() {
               onEdit={handleOpenEdit}
               onUpdateNotify={handleUpdateNotify}
               onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
               pendingUpdateIds={pendingUpdateIds}
             />
           )}
@@ -606,6 +703,23 @@ export function Board() {
               onEdit={handleOpenEdit}
               onUpdateNotify={handleUpdateNotify}
               onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+          )}
+          {activeTab === "technical" && (
+            <MobileTaskList
+              tasks={technicalTasks}
+              selectable
+              selectedIds={selectedTasks}
+              onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
               pendingUpdateIds={pendingUpdateIds}
             />
           )}
@@ -614,6 +728,16 @@ export function Board() {
               tasks={completedTasks}
               showCompletedColors
               onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+          )}
+          {activeTab === "cancelled" && (
+            <MobileTaskList
+              tasks={cancelledTasks}
+              showCancelledColors
+              onReactivate={handleReactivate}
+              onDeletePermanently={handleDeletePermanently}
               onEdit={handleOpenEdit}
               pendingUpdateIds={pendingUpdateIds}
             />
@@ -672,7 +796,8 @@ export function Board() {
 
       {/* WhatsApp Links Dialog */}
       <Dialog open={isNotifyDialogOpen} onOpenChange={setIsNotifyDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-full max-w-full fixed bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none p-6 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-md sm:rounded-lg bg-card animate-in slide-in-from-bottom duration-300">
+          <div className="md:hidden w-12 h-1.5 bg-muted rounded-full mx-auto mb-4 shrink-0" />
           <DialogHeader>
             <DialogTitle>WhatsApp Bildirimleri Gönder</DialogTitle>
           </DialogHeader>
@@ -700,7 +825,8 @@ export function Board() {
 
       {/* Manual Vehicle Assignment Dialog */}
       <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
-        <DialogContent className="sm:max-w-md bg-card">
+        <DialogContent className="w-full max-w-full fixed bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none p-6 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-md sm:rounded-lg bg-card animate-in slide-in-from-bottom duration-300">
+          <div className="md:hidden w-12 h-1.5 bg-muted rounded-full mx-auto mb-4 shrink-0" />
           <DialogHeader>
             <DialogTitle>Seçili İşlere Araç Ata</DialogTitle>
           </DialogHeader>
@@ -737,7 +863,8 @@ export function Board() {
 
       {/* Edit Task Dialog */}
       <Dialog open={!!editingTask} onOpenChange={(open) => { if (!open) setEditingTask(null); }}>
-        <DialogContent className="sm:max-w-lg bg-card">
+        <DialogContent className="w-full max-w-full fixed bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none p-6 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-lg bg-card max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+          <div className="md:hidden w-12 h-1.5 bg-muted rounded-full mx-auto mb-4 shrink-0" />
           <DialogHeader>
             <DialogTitle>İş Düzenle</DialogTitle>
           </DialogHeader>
@@ -831,7 +958,8 @@ export function Board() {
 
       {/* Manual Queue Addition Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-md bg-card">
+        <DialogContent className="w-full max-w-full fixed bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none p-6 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-md sm:rounded-lg bg-card animate-in slide-in-from-bottom duration-300">
+          <div className="md:hidden w-12 h-1.5 bg-muted rounded-full mx-auto mb-4 shrink-0" />
           <DialogHeader>
             <DialogTitle>Kuyruğa Şoför / Araç Ekle</DialogTitle>
           </DialogHeader>
@@ -957,8 +1085,12 @@ function MobileTaskList({
   onEdit,
   onUpdateNotify,
   onDropAssign,
+  onAssignSingle,
   pendingUpdateIds = new Set(),
   showCompletedColors = false,
+  showCancelledColors = false,
+  onReactivate,
+  onDeletePermanently,
 }: {
   tasks: Task[];
   selectable?: boolean;
@@ -970,8 +1102,12 @@ function MobileTaskList({
   onEdit?: (task: Task) => void;
   onUpdateNotify?: (task: Task) => void;
   onDropAssign?: (taskId: number, vehicleId: number) => void;
+  onAssignSingle?: (taskId: number) => void;
+  onReactivate?: (task: Task) => void;
+  onDeletePermanently?: (task: Task) => void;
   pendingUpdateIds?: Set<number>;
   showCompletedColors?: boolean;
+  showCancelledColors?: boolean;
 }) {
   if (!tasks.length)
     return (
@@ -995,8 +1131,12 @@ function MobileTaskList({
           onEdit={onEdit ? () => onEdit(t) : undefined}
           onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
           onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
+          onAssignSingle={onAssignSingle ? () => onAssignSingle(t.id) : undefined}
+          onReactivate={onReactivate ? () => onReactivate(t) : undefined}
+          onDeletePermanently={onDeletePermanently ? () => onDeletePermanently(t) : undefined}
           hasPendingUpdate={pendingUpdateIds.has(t.id)}
           showCompletedColor={showCompletedColors}
+          showCancelledColor={showCancelledColors}
           fullWidth
         />
       ))}
@@ -1017,8 +1157,12 @@ function TaskColumn({
   onEdit,
   onUpdateNotify,
   onDropAssign,
+  onAssignSingle,
+  onReactivate,
+  onDeletePermanently,
   pendingUpdateIds = new Set(),
   showCompletedColors = false,
+  showCancelledColors = false,
 }: {
   title: string;
   tasks: Task[];
@@ -1031,8 +1175,12 @@ function TaskColumn({
   onEdit?: (task: Task) => void;
   onUpdateNotify?: (task: Task) => void;
   onDropAssign?: (taskId: number, vehicleId: number) => void;
+  onAssignSingle?: (taskId: number) => void;
+  onReactivate?: (task: Task) => void;
+  onDeletePermanently?: (task: Task) => void;
   pendingUpdateIds?: Set<number>;
   showCompletedColors?: boolean;
+  showCancelledColors?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2 h-full overflow-hidden">
@@ -1058,8 +1206,12 @@ function TaskColumn({
             onEdit={onEdit ? () => onEdit(t) : undefined}
             onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
             onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
+            onAssignSingle={onAssignSingle ? () => onAssignSingle(t.id) : undefined}
+            onReactivate={onReactivate ? () => onReactivate(t) : undefined}
+            onDeletePermanently={onDeletePermanently ? () => onDeletePermanently(t) : undefined}
             hasPendingUpdate={pendingUpdateIds.has(t.id)}
             showCompletedColor={showCompletedColors}
+            showCancelledColor={showCancelledColors}
           />
         ))}
         {!tasks.length && <EmptyState text="Görev yok" />}
@@ -1080,8 +1232,12 @@ function TaskCard({
   onEdit,
   onUpdateNotify,
   onDropAssign,
+  onAssignSingle,
+  onReactivate,
+  onDeletePermanently,
   hasPendingUpdate = false,
   showCompletedColor = false,
+  showCancelledColor = false,
   fullWidth = false,
 }: {
   task: Task;
@@ -1094,8 +1250,12 @@ function TaskCard({
   onEdit?: () => void;
   onUpdateNotify?: () => void;
   onDropAssign?: (vehicleId: number) => void;
+  onAssignSingle?: () => void;
+  onReactivate?: () => void;
+  onDeletePermanently?: () => void;
   hasPendingUpdate?: boolean;
   showCompletedColor?: boolean;
+  showCancelledColor?: boolean;
   fullWidth?: boolean;
 }) {
   const scheduledDate = new Date(task.scheduledTime);
@@ -1105,6 +1265,14 @@ function TaskCard({
 
   const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
   const isNotified = task.status === "assigned";
+
+  // Extract plate from notes as a fallback if vehicleName is not set
+  const getPlateFromNotes = (notes: string | null | undefined) => {
+    if (!notes) return null;
+    const match = notes.match(/Plaka:\s*([^\s|]+)/i);
+    return match ? match[1] : null;
+  };
+  const displayName = task.vehicleName || getPlateFromNotes(task.notes);
 
   // Colour coding for completed column
   const isGelirType = task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
@@ -1118,23 +1286,27 @@ function TaskCard({
   } else if (task.status === "completed") {
     cardBg = showCompletedColor
       ? isGelirType
-        ? "bg-emerald-50/60 border-emerald-200"
-        : "bg-blue-50/60 border-blue-200"
+        ? "bg-emerald-50/60 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-400"
+        : "bg-blue-50/60 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900/50 text-blue-800 dark:text-blue-400"
       : "bg-card";
+  } else if (task.status === "cancelled") {
+    cardBg = "bg-rose-50/40 border-rose-200 opacity-75 dark:bg-rose-950/10 dark:border-rose-900/30 text-rose-800 dark:text-rose-400";
+  } else if (task.type === "technical") {
+    cardBg = "bg-amber-50/50 border-amber-300 dark:bg-amber-950/10 dark:border-amber-900/30 text-amber-900 dark:text-amber-400";
   } else if (isAssignedButNotNotified) {
-    cardBg = "bg-amber-50/20 border-amber-300 border-dashed";
+    cardBg = "bg-amber-50/20 border-amber-300 border-dashed dark:bg-amber-950/10 dark:border-amber-900/40 text-amber-800 dark:text-amber-400";
   } else if (task.status === "draft") {
-    cardBg = "bg-muted/40 border-dashed";
+    cardBg = "bg-muted/40 border-dashed dark:bg-slate-900/40 dark:border-slate-800/80";
   } else {
     cardBg = "bg-card";
   }
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg border transition-all
-        ${selectable ? "cursor-pointer active:scale-[0.99]" : "cursor-default"}
-        ${!isDragOver && selected ? "ring-2 ring-primary border-transparent" : ""}
-        ${!isDragOver && !selected ? "hover:border-primary/40" : ""}
+      className={`relative overflow-hidden rounded-lg border transition-all duration-200 ease-in-out
+        ${selectable ? "cursor-pointer active:scale-[0.98]" : "cursor-default"}
+        ${!isDragOver && selected ? "ring-2 ring-primary border-transparent shadow-sm" : ""}
+        ${!isDragOver && !selected ? "hover:border-primary/50 hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:-translate-y-[2px]" : ""}
         ${cardBg}
         ${fullWidth ? "w-full" : ""}
       `}
@@ -1185,9 +1357,10 @@ function TaskCard({
             <Badge
               variant="outline"
               className={`text-[10px] uppercase font-semibold px-1.5 shrink-0 ${
-                isDelayed ? "border-amber-400 text-amber-600 bg-amber-50/60" :
-                showCompletedColor && isGelirType ? "border-emerald-300 text-emerald-700 bg-emerald-50/60" :
-                showCompletedColor && !isGelirType ? "border-blue-300 text-blue-700 bg-blue-50/60" : ""
+                isDelayed ? "border-amber-400 text-amber-600 bg-amber-50/60 dark:border-amber-800 dark:text-amber-400 dark:bg-amber-950/40" :
+                task.type === "technical" ? "border-yellow-400 text-yellow-600 bg-yellow-50/60 dark:border-yellow-800 dark:text-yellow-400 dark:bg-yellow-950/40" :
+                showCompletedColor && isGelirType ? "border-emerald-300 text-emerald-700 bg-emerald-50/60 dark:border-emerald-800 dark:text-emerald-400 dark:bg-emerald-950/40" :
+                showCompletedColor && !isGelirType ? "border-blue-300 text-blue-700 bg-blue-50/60 dark:border-blue-800 dark:text-blue-400 dark:bg-blue-950/40" : ""
               }`}
             >
               {task.flightCode ||
@@ -1195,6 +1368,8 @@ function TaskCard({
                   ? "Otel"
                   : task.type === "airport_run"
                   ? "Havalimanı"
+                  : task.type === "technical"
+                  ? "Teknik"
                   : "Ekstra")}
             </Badge>
 
@@ -1218,22 +1393,45 @@ function TaskCard({
                       <Pencil className="w-3.5 h-3.5" /> Düzenle
                     </DropdownMenuItem>
                   )}
-                  {onComplete && task.status !== "completed" && (
-                    <DropdownMenuItem
-                      onClick={(e) => { e.stopPropagation(); onComplete(); }}
-                      className="gap-2 text-emerald-700 focus:text-emerald-700"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
-                    </DropdownMenuItem>
-                  )}
-                  {(onEdit || onComplete) && onCancel && <DropdownMenuSeparator />}
-                  {onCancel && (
-                    <DropdownMenuItem
-                      onClick={(e) => { e.stopPropagation(); onCancel(); }}
-                      className="gap-2 text-red-600 focus:text-red-600"
-                    >
-                      <XCircle className="w-3.5 h-3.5" /> İptal Et / Sil
-                    </DropdownMenuItem>
+                  {task.status === "cancelled" ? (
+                    <>
+                      {onReactivate && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); onReactivate(); }}
+                          className="gap-2 text-blue-700 focus:text-blue-700"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" /> Yeniden Aktifleştir
+                        </DropdownMenuItem>
+                      )}
+                      {onDeletePermanently && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); onDeletePermanently(); }}
+                          className="gap-2 text-red-600 focus:text-red-600 font-semibold"
+                        >
+                          <XCircle className="w-3.5 h-3.5" /> Kalıcı Olarak Sil
+                        </DropdownMenuItem>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {onComplete && task.status !== "completed" && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); onComplete(); }}
+                          className="gap-2 text-emerald-700 focus:text-emerald-700"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
+                        </DropdownMenuItem>
+                      )}
+                      {(onEdit || onComplete) && onCancel && <DropdownMenuSeparator />}
+                      {onCancel && (
+                        <DropdownMenuItem
+                          onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                          className="gap-2 text-red-600 focus:text-red-600"
+                        >
+                          <XCircle className="w-3.5 h-3.5" /> İptal Et
+                        </DropdownMenuItem>
+                      )}
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1242,7 +1440,14 @@ function TaskCard({
         </div>
 
         {/* Route */}
-        {task.type === "extra" ? (
+        {task.type === "technical" ? (
+          <div className="text-xs font-semibold mb-2.5 bg-yellow-50/50 dark:bg-yellow-950/20 border border-dashed border-yellow-300 rounded px-2.5 py-2 text-foreground/90">
+            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">Teknik İş Detayı</div>
+            <div className="line-clamp-2 leading-relaxed" title={task.pickupLocation}>
+              {task.pickupLocation}
+            </div>
+          </div>
+        ) : task.type === "extra" ? (
           <div className="text-xs font-semibold mb-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-300 rounded px-2.5 py-2 text-foreground/90">
             <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">Ekstra İş Detayı</div>
             <div className="line-clamp-2 leading-relaxed" title={task.pickupLocation}>
@@ -1274,12 +1479,12 @@ function TaskCard({
                 : `${task.passengerCount} kişi`}
             </span>
           </div>
-          {task.vehicleName && (
+          {displayName && (
             <span
               className="font-semibold text-primary truncate max-w-[120px]"
-              title={task.vehicleName}
+              title={displayName}
             >
-              {task.vehicleName}
+              {displayName}
             </span>
           )}
         </div>
@@ -1341,21 +1546,72 @@ function TaskCard({
               </div>
             </div>
           ) : (
-            <div className="mt-2.5 pt-2 border-t flex items-center text-[11px] text-muted-foreground italic select-none">
-              Araç atanmadı
+            <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+              <span className="text-muted-foreground italic select-none">Araç atanmadı</span>
+              {onAssignSingle && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2.5 text-[10px] border-dashed border-primary/40 hover:border-primary text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssignSingle();
+                  }}
+                >
+                  <Car className="w-2.5 h-2.5 mr-1" />
+                  Araç Seç
+                </Button>
+              )}
             </div>
           )
+        )}
+
+        {/* Quick Touch Actions for Mobile (visible only on mobile touch screens) */}
+        {task.status !== "completed" && task.status !== "cancelled" && (
+          <div className="flex md:hidden items-center justify-end gap-2 mt-2.5 pt-2 border-t border-dashed">
+            <span className="text-[10px] text-muted-foreground mr-auto font-bold uppercase tracking-wider">Hızlı İşlem:</span>
+            {onComplete && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-7 p-0 rounded-full bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50 hover:bg-emerald-100 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComplete();
+                }}
+                title="Tamamlandı"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+              </Button>
+            )}
+            {onCancel && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-7 p-0 rounded-full bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-900/50 hover:bg-rose-100 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancel();
+                }}
+                title="İptal Et"
+              >
+                <XCircle className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
       {/* Status stripe */}
       <div
         className={`h-0.5 w-full absolute bottom-0 left-0
-          ${task.status === "draft"       ? "bg-slate-300"  : ""}
-          ${task.status === "assigned"    ? "bg-blue-400"   : ""}
-          ${task.status === "in_progress" ? "bg-amber-400"  : ""}
-          ${task.status === "completed" && isGelirType  ? "bg-emerald-500" : ""}
-          ${task.status === "completed" && !isGelirType ? "bg-blue-500"    : ""}
+          ${task.type === "technical"     ? "bg-yellow-400" : ""}
+          ${task.type !== "technical" && task.status === "draft"       ? "bg-slate-300"  : ""}
+          ${task.type !== "technical" && task.status === "assigned"    ? "bg-blue-400"   : ""}
+          ${task.type !== "technical" && task.status === "in_progress" ? "bg-amber-400"  : ""}
+          ${task.type !== "technical" && task.status === "completed" && isGelirType  ? "bg-emerald-500" : ""}
+          ${task.type !== "technical" && task.status === "completed" && !isGelirType ? "bg-blue-500"    : ""}
+          ${task.status === "cancelled"   ? "bg-rose-400"   : ""}
         `}
       />
     </div>

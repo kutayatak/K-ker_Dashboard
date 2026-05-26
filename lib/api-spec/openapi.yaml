@@ -164,7 +164,7 @@ paths:
           name: type
           schema:
             type: string
-            enum: [hotel_pickup, airport_run, extra]
+            enum: [hotel_pickup, airport_run, extra, technical]
         - in: query
           name: date
           schema:
@@ -485,7 +485,7 @@ components:
           type: integer
         type:
           type: string
-          enum: [hotel_pickup, airport_run, extra]
+          enum: [hotel_pickup, airport_run, extra, technical]
         status:
           type: string
           enum: [draft, assigned, in_progress, completed, cancelled]
@@ -526,7 +526,7 @@ components:
       properties:
         type:
           type: string
-          enum: [hotel_pickup, airport_run, extra]
+          enum: [hotel_pickup, airport_run, extra, technical]
         flightCode:
           type: string
         passengerCount:
@@ -544,6 +544,14 @@ components:
           type: string
         fee:
           type: number
+        km:
+          type: ["number", "string", "null"]
+        importKey:
+          type: ["string", "null"]
+        rowIndex:
+          type: ["integer", "null"]
+        tableType:
+          type: ["string", "null"]
 
     TaskUpdate:
       type: object
@@ -574,6 +582,8 @@ components:
           type: ["string", "null"]
         fee:
           type: ["number", "null"]
+        km:
+          type: ["number", "string", "null"]
 
     TaskImport:
       type: object
@@ -583,6 +593,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/TaskInput"
+        excelBase64:
+          type: ["string", "null"]
+        excelDate:
+          type: ["string", "null"]
+        excelFilename:
+          type: ["string", "null"]
 
     ImportResult:
       type: object

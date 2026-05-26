@@ -15,21 +15,43 @@ function excelTimeToHHMM(serial: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-// Excel serial date+time or pure time → ISO datetime for today
-function buildScheduledTime(rawVal: any): string {
-  const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
-  if (rawVal == null || rawVal === "") return `${today}T00:00:00`;
+// Excel serial date+time or pure time → ISO datetime for base date with offset
+function buildScheduledTime(rawVal: any, baseDateStr: string, dateOffset: number): string {
+  const baseDate = new Date(baseDateStr);
+  baseDate.setDate(baseDate.getDate() + dateOffset);
+  const dateStr = baseDate.toISOString().split("T")[0];
+
+  if (rawVal == null || rawVal === "") return `${dateStr}T00:00:00`;
   const num = Number(rawVal);
   if (!isNaN(num)) {
     // Excel stores time as fraction of day; dates > 1 have integer part
     const timeFraction = num % 1;
     const hhmm = excelTimeToHHMM(timeFraction);
-    return `${today}T${hhmm}:00`;
+    return `${dateStr}T${hhmm}:00`;
   }
   // String like "04:30"
   const str = String(rawVal).trim();
-  if (/^\d{1,2}:\d{2}$/.test(str)) return `${today}T${str.padStart(5, "0")}:00`;
-  return `${today}T00:00:00`;
+  if (/^\d{1,2}:\d{2}$/.test(str)) return `${dateStr}T${str.padStart(5, "0")}:00`;
+  return `${dateStr}T00:00:00`;
+}
+
+// Extract total minutes from Excel serial time or string "HH:MM"
+function getTimeMinutes(rawVal: any): number | null {
+  if (rawVal == null || rawVal === "") return null;
+  const num = Number(rawVal);
+  if (!isNaN(num)) {
+    const timeFraction = num % 1;
+    const totalMinutes = Math.round(timeFraction * 24 * 60);
+    return totalMinutes % (24 * 60);
+  }
+  const str = String(rawVal).trim();
+  const match = str.match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    const h = parseInt(match[1], 10);
+    const m = parseInt(match[2], 10);
+    return h * 60 + m;
+  }
+  return null;
 }
 
 // Parse passenger count from strings like "2CPT", "1KBN", "3CPT+1KBN", "1 CPT"
@@ -53,7 +75,7 @@ function isValidValue(val: any): boolean {
 }
 
 // Build task for first section (regular pages)
-function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "right"): any | null {
+function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "right", baseDateStr: string, dateOffset: number): any | null {
   if (tableType === "left") {
     // Columns: A=S.NO, B=UÇUŞ KODU, C=PLAKA, D=ALINIŞ SAAT, E=OTEL ADI, F=EKİP SAYISI, G=KM
     const flightCode = String(row[1] || "").trim();
@@ -63,10 +85,11 @@ function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "rig
     const ekip       = String(row[5] || "").trim();
     const kmRaw      = row[6];
 
-    if (!isValidValue(row[4]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
+    if (!isValidValue(row[4])) return null;
     if (!isValidValue(row[1]) && !isValidValue(row[4])) return null;
 
-    const scheduledTime = buildScheduledTime(timeRaw);
+    const isCancelled = plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
+    const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
     const importKey = `hotel_pickup|${scheduledTime}|${hotelName}|Esenboğa Havalimanı`;
 
     return {
@@ -76,7 +99,7 @@ function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "rig
       pickupLocation: hotelName,
       dropoffLocation: "Esenboğa Havalimanı",
       scheduledTime,
-      notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      notes: [ekip ? ekip : null, isCancelled ? "İPTAL" : (plate ? `Plaka: ${plate}` : null)].filter(Boolean).join(" | ") || undefined,
       km: kmRaw != null && !isNaN(Number(kmRaw)) ? Number(kmRaw) : undefined,
       rowIndex,
       tableType,
@@ -91,10 +114,11 @@ function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "rig
     const ekip       = String(row[11] || "").trim();
     const kmRaw      = row[12];
 
-    if (!isValidValue(row[10]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
+    if (!isValidValue(row[10])) return null;
     if (!isValidValue(row[7]) && !isValidValue(row[10])) return null;
 
-    const scheduledTime = buildScheduledTime(timeRaw);
+    const isCancelled = plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
+    const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
     const importKey = `airport_run|${scheduledTime}|Esenboğa Havalimanı|${hotelName}`;
 
     return {
@@ -104,7 +128,7 @@ function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "rig
       pickupLocation: "Esenboğa Havalimanı",
       dropoffLocation: hotelName,
       scheduledTime,
-      notes: [ekip ? ekip : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      notes: [ekip ? ekip : null, isCancelled ? "İPTAL" : (plate ? `Plaka: ${plate}` : null)].filter(Boolean).join(" | ") || undefined,
       km: kmRaw != null && !isNaN(Number(kmRaw)) ? Number(kmRaw) : undefined,
       rowIndex,
       tableType,
@@ -114,26 +138,32 @@ function buildRegularTask(row: any[], rowIndex: number, tableType: "left" | "rig
 }
 
 // Build task for second section (ekstra / page 2)
-function buildEkstraTask(row: any[], rowIndex: number, tableType: "left" | "right"): any | null {
+function buildEkstraTask(row: any[], rowIndex: number, tableType: "left" | "right", baseDateStr: string, dateOffset: number): any | null {
   if (tableType === "left") {
     // Columns: A=S.NO, B=ALINIŞ SAAT, C=PLAKA, D=OTEL ADI / AÇIKLAMA
     const timeRaw = row[1];
     const plate   = String(row[2] || "").trim();
     const desc    = String(row[3] || "").trim();
 
-    if (!isValidValue(row[3]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
+    if (!isValidValue(row[3])) return null;
 
-    const scheduledTime = buildScheduledTime(timeRaw);
-    const importKey = `extra|${scheduledTime}|${desc}|Ekstra Gider`;
+    const isCancelled = plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
+    const isTechnical = desc.toLowerCase().includes("teknik") || desc.toLowerCase().includes("teknık") || desc.toLowerCase().includes("masraf") || desc.toLowerCase().includes("msrf") || desc.toLowerCase().includes("kod");
+    
+    const type = isTechnical ? "technical" : "extra";
+    const dropoffLocation = isTechnical ? "Teknik Gider" : "Ekstra Gider";
+    
+    const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
+    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}`;
 
     return {
-      type: "extra",
+      type,
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
-      dropoffLocation: "Ekstra Gider",
+      dropoffLocation,
       scheduledTime,
-      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, isCancelled ? "İPTAL" : (plate ? `Plaka: ${plate}` : null)].filter(Boolean).join(" | ") || undefined,
       rowIndex,
       tableType,
       importKey,
@@ -144,19 +174,25 @@ function buildEkstraTask(row: any[], rowIndex: number, tableType: "left" | "righ
     const plate   = String(row[8] || "").trim();
     const desc    = String(row[9] || "").trim();
 
-    if (!isValidValue(row[9]) || plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL") return null;
+    if (!isValidValue(row[9])) return null;
 
-    const scheduledTime = buildScheduledTime(timeRaw);
-    const importKey = `extra|${scheduledTime}|${desc}|Ekstra Gelir`;
+    const isCancelled = plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
+    const isTechnical = desc.toLowerCase().includes("teknik") || desc.toLowerCase().includes("teknık") || desc.toLowerCase().includes("masraf") || desc.toLowerCase().includes("msrf") || desc.toLowerCase().includes("kod");
+    
+    const type = isTechnical ? "technical" : "extra";
+    const dropoffLocation = isTechnical ? "Teknik Gelir" : "Ekstra Gelir";
+    
+    const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
+    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}`;
 
     return {
-      type: "extra",
+      type,
       flightCode: undefined,
       passengerCount: parsePassengerCount(desc),
       pickupLocation: desc,
-      dropoffLocation: "Ekstra Gelir",
+      dropoffLocation,
       scheduledTime,
-      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, plate ? `Plaka: ${plate}` : null].filter(Boolean).join(" | ") || undefined,
+      notes: [desc && (desc.includes("CPT") || desc.includes("KBN") || desc.toLowerCase().includes("cpt") || desc.toLowerCase().includes("kbn")) ? desc : null, isCancelled ? "İPTAL" : (plate ? `Plaka: ${plate}` : null)].filter(Boolean).join(" | ") || undefined,
       rowIndex,
       tableType,
       importKey,
@@ -194,6 +230,7 @@ export function ImportTasks() {
   const createVehicleMutation = useCreateVehicle();
 
   const [importMode, setImportMode] = useState<"tasks" | "vehicles">("tasks");
+  const [shiftDate, setShiftDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [parsedTasks, setParsedTasks] = useState<any[]>([]);
   const [parsedVehicles, setParsedVehicles] = useState<any[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -224,9 +261,22 @@ export function ImportTasks() {
           const tasks: any[] = [];
           let currentSection: "regular" | "ekstra" = "regular";
 
+          let lastTimeMinutesLeft = -1;
+          let dateOffsetLeft = 0;
+
+          let lastTimeMinutesRight = -1;
+          let dateOffsetRight = 0;
+
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
             if (!row || row.every(c => c == null || c === "")) continue;
+
+            // Check if we hit the Ekstra section header in a robust way
+            const rowText = row.map(c => String(c || "")).join(" ").toLowerCase();
+            if (rowText.includes("ekstra") || rowText.includes("ekstralar")) {
+              currentSection = "ekstra";
+              continue;
+            }
 
             const colA = row[0];
             if (colA == null) continue;
@@ -242,16 +292,48 @@ export function ImportTasks() {
             if (isNaN(Number(colAStr))) continue;
 
             if (currentSection === "regular") {
-              const leftTask = buildRegularTask(row, i + 1, "left");
+              const timeMinutesLeft = getTimeMinutes(row[3]);
+              if (timeMinutesLeft !== null) {
+                if (lastTimeMinutesLeft !== -1 && timeMinutesLeft < lastTimeMinutesLeft) {
+                  dateOffsetLeft = 1;
+                }
+                lastTimeMinutesLeft = timeMinutesLeft;
+              }
+
+              const leftTask = buildRegularTask(row, i + 1, "left", shiftDate, dateOffsetLeft);
               if (leftTask) tasks.push(...splitTask(leftTask));
 
-              const rightTask = buildRegularTask(row, i + 1, "right");
+              const timeMinutesRight = getTimeMinutes(row[9]);
+              if (timeMinutesRight !== null) {
+                if (lastTimeMinutesRight !== -1 && timeMinutesRight < lastTimeMinutesRight) {
+                  dateOffsetRight = 1;
+                }
+                lastTimeMinutesRight = timeMinutesRight;
+              }
+
+              const rightTask = buildRegularTask(row, i + 1, "right", shiftDate, dateOffsetRight);
               if (rightTask) tasks.push(...splitTask(rightTask));
             } else {
-              const leftTask = buildEkstraTask(row, i + 1, "left");
+              const timeMinutesLeft = getTimeMinutes(row[1]);
+              if (timeMinutesLeft !== null) {
+                if (lastTimeMinutesLeft !== -1 && timeMinutesLeft < lastTimeMinutesLeft) {
+                  dateOffsetLeft = 1;
+                }
+                lastTimeMinutesLeft = timeMinutesLeft;
+              }
+
+              const leftTask = buildEkstraTask(row, i + 1, "left", shiftDate, dateOffsetLeft);
               if (leftTask) tasks.push(...splitTask(leftTask));
 
-              const rightTask = buildEkstraTask(row, i + 1, "right");
+              const timeMinutesRight = getTimeMinutes(row[7]);
+              if (timeMinutesRight !== null) {
+                if (lastTimeMinutesRight !== -1 && timeMinutesRight < lastTimeMinutesRight) {
+                  dateOffsetRight = 1;
+                }
+                lastTimeMinutesRight = timeMinutesRight;
+              }
+
+              const rightTask = buildEkstraTask(row, i + 1, "right", shiftDate, dateOffsetRight);
               if (rightTask) tasks.push(...splitTask(rightTask));
             }
           }
@@ -421,7 +503,7 @@ export function ImportTasks() {
         data: { 
           tasks: parsedTasks as any,
           excelBase64: excelBase64 ?? undefined,
-          excelDate: new Date().toISOString().split("T")[0],
+          excelDate: shiftDate,
           excelFilename: fileName ?? "import.xlsx"
         } 
       },
@@ -469,17 +551,30 @@ export function ImportTasks() {
     hotel_pickup: parsedTasks.filter((t) => t.type === "hotel_pickup"),
     airport_run:  parsedTasks.filter((t) => t.type === "airport_run"),
     extra:        parsedTasks.filter((t) => t.type === "extra"),
+    technical:    parsedTasks.filter((t) => t.type === "technical"),
   };
 
   return (
     <div className="h-full flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Veri İçe Aktar</h1>
           <p className="text-muted-foreground text-sm">
             Toplu görev veya araç/şoför yüklemek için Excel dosyası yükleyin
           </p>
         </div>
+
+        {importMode === "tasks" && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted-foreground">Vardiya Tarihi:</span>
+            <input
+              type="date"
+              className="rounded-md border border-input bg-card px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+              value={shiftDate}
+              onChange={(e) => setShiftDate(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="flex bg-muted p-1 rounded-lg self-start shrink-0 border border-slate-100 dark:border-slate-800">
           <Button
@@ -552,7 +647,7 @@ export function ImportTasks() {
                       <>
                         {parsedTasks.length} görev bulundu
                         <span className="ml-2 text-xs">
-                          ({categories.hotel_pickup.length} otel alım · {categories.airport_run.length} havalimanı · {categories.extra.length} ekstra)
+                          ({categories.hotel_pickup.length} otel alım · {categories.airport_run.length} havalimanı · {categories.extra.length} ekstra · {categories.technical.length} teknik)
                         </span>
                       </>
                     ) : (
@@ -595,10 +690,11 @@ export function ImportTasks() {
           </Card>
 
           {importMode === "tasks" ? (
-            <div className="grid grid-cols-3 gap-4 flex-1 overflow-hidden">
+            <div className="grid grid-cols-4 gap-4 flex-1 overflow-hidden">
               <PreviewColumn title="Otel Alımları (→ Havalimanı)" tasks={categories.hotel_pickup} />
               <PreviewColumn title="Havalimanı Karşılamaları (→ Otel)" tasks={categories.airport_run} />
               <PreviewColumn title="Ekstralar" tasks={categories.extra} />
+              <PreviewColumn title="Teknik İşler" tasks={categories.technical} />
             </div>
           ) : (
             <Card className="flex flex-col flex-1 overflow-hidden">
@@ -668,7 +764,12 @@ function PreviewColumn({ title, tasks }: { title: string; tasks: any[] }) {
                 </Badge>
               )}
             </div>
-            {t.type === "extra" ? (
+            {t.type === "technical" ? (
+              <div className="text-xs font-semibold bg-yellow-50/70 dark:bg-yellow-950/20 border border-solid border-yellow-300 rounded p-1.5 text-foreground/90 mt-1">
+                <span className="text-[9px] text-yellow-600 dark:text-yellow-400 font-extrabold uppercase tracking-wider block mb-0.5">Teknik İş Detayı</span>
+                <span className="truncate block" title={t.pickupLocation}>{t.pickupLocation}</span>
+              </div>
+            ) : t.type === "extra" ? (
               <div className="text-xs font-semibold bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-300 rounded p-1.5 text-foreground/90 mt-1">
                 <span className="text-[9px] text-amber-600 font-bold uppercase tracking-wider block mb-0.5">Ekstra İş Detayı</span>
                 <span className="truncate block" title={t.pickupLocation}>{t.pickupLocation}</span>

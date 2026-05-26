@@ -13,7 +13,7 @@ import {
   SidebarFooter,
   SidebarTrigger
 } from "@/components/ui/sidebar";
-import { Plane, Car, Upload, BarChart3, Moon, Sun } from "lucide-react";
+import { Plane, Car, Upload, BarChart3, Moon, Sun, FileSpreadsheet } from "lucide-react";
 
 /* ── Dark mode hook ─────────────────────────────────────────────────────── */
 function useDarkMode() {
@@ -44,6 +44,7 @@ export function AppSidebar() {
 
   const navigation = [
     { name: "Sevkiyat Paneli", href: "/", icon: Plane },
+    { name: "Excel Görünümü", href: "/excel-view", icon: FileSpreadsheet },
     { name: "Araçlar", href: "/vehicles", icon: Car },
     { name: "Veri İçe Aktar", href: "/import", icon: Upload },
     { name: "Raporlar", href: "/reports", icon: BarChart3 },

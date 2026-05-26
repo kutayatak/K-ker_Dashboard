@@ -112,8 +112,26 @@ router.post("/import", async (req, res) => {
 
   for (const t of tasks) {
     try {
-      const hasPlate = t.notes && (t.notes.includes("Plaka:") || t.notes.toLowerCase().includes("plaka"));
-      const status = hasPlate ? "completed" : "draft";
+      let vehicleId: number | null = null;
+      const isImportCancelled = (t as any).status === "cancelled" || 
+        (t.notes && (t.notes.includes("İPTAL") || t.notes.includes("IPTAL") || t.notes.toLowerCase().includes("iptal")));
+      
+      const hasPlate = t.notes && (t.notes.includes("Plaka:") || t.notes.toLowerCase().includes("plaka")) && !isImportCancelled;
+      const status = isImportCancelled ? "cancelled" : (hasPlate ? "completed" : "draft");
+
+      if (hasPlate && t.notes && !isImportCancelled) {
+        const plateMatch = t.notes.match(/Plaka:\s*([^\s|]+)/i);
+        if (plateMatch) {
+          const plate = plateMatch[1].trim();
+          const [vehicle] = await db
+            .select({ id: vehiclesTable.id })
+            .from(vehiclesTable)
+            .where(eq(vehiclesTable.plate, plate));
+          if (vehicle) {
+            vehicleId = vehicle.id;
+          }
+        }
+      }
 
       // Auto-fill KM from route preset if not provided
       let km = t.km != null ? String(t.km) : null;
@@ -140,6 +158,7 @@ router.post("/import", async (req, res) => {
         rowIndex: t.rowIndex ?? null,
         tableType: t.tableType ?? null,
         status,
+        vehicleId: isImportCancelled ? null : vehicleId,
       };
 
       if (t.importKey) {
@@ -150,15 +169,17 @@ router.post("/import", async (req, res) => {
           .where(eq(tasksTable.importKey, t.importKey));
 
         if (existing) {
-          // Don't override assigned vehicles or completed tasks
-          const keepVehicle = existing.vehicleId != null;
-          const keepStatus = existing.status === "assigned" || existing.status === "completed";
+          // Don't override assigned vehicles or completed tasks unless new import is explicitly cancelled
+          const keepVehicle = existing.vehicleId != null && !isImportCancelled;
+          const keepStatus = (existing.status === "assigned" || existing.status === "completed") && !isImportCancelled;
+          const finalStatus = isImportCancelled ? "cancelled" : (keepStatus ? existing.status : status);
+
           const [task] = await db
             .update(tasksTable)
             .set({
               ...values,
-              vehicleId: keepVehicle ? existing.vehicleId : null,
-              status: keepStatus ? existing.status : status,
+              vehicleId: keepVehicle ? existing.vehicleId : (isImportCancelled ? null : vehicleId),
+              status: finalStatus,
             })
             .where(eq(tasksTable.id, existing.id))
             .returning();
@@ -271,6 +292,7 @@ router.post("/", async (req, res) => {
       ...parsed.data,
       scheduledTime: new Date(parsed.data.scheduledTime),
       fee: parsed.data.fee != null ? String(parsed.data.fee) : null,
+      km: parsed.data.km != null ? String(parsed.data.km) : null,
     })
     .returning();
 
@@ -301,6 +323,7 @@ router.patch("/:id", async (req, res) => {
   if (parsed.data.actualPickupTime) updateData.actualPickupTime = new Date(parsed.data.actualPickupTime);
   if (parsed.data.actualDropoffTime) updateData.actualDropoffTime = new Date(parsed.data.actualDropoffTime);
   if (parsed.data.fee != null) updateData.fee = String(parsed.data.fee);
+  if (parsed.data.km != null) updateData.km = String(parsed.data.km);
 
   const [task] = await db
     .update(tasksTable)

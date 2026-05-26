@@ -12,6 +12,7 @@ const Board = lazy(() => import("@/pages/board").then(m => ({ default: m.Board }
 const Vehicles = lazy(() => import("@/pages/vehicles").then(m => ({ default: m.Vehicles })));
 const ImportTasks = lazy(() => import("@/pages/import").then(m => ({ default: m.ImportTasks })));
 const Reports = lazy(() => import("@/pages/reports").then(m => ({ default: m.Reports })));
+const ExcelView = lazy(() => import("@/pages/excel-view").then(m => ({ default: m.ExcelView })));
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ function App() {
                 <Suspense fallback={<div className="flex h-full items-center justify-center p-8">Yükleniyor...</div>}>
                   <Switch>
                     <Route path="/" component={Board} />
+                    <Route path="/excel-view" component={ExcelView} />
                     <Route path="/vehicles" component={Vehicles} />
                     <Route path="/import" component={ImportTasks} />
                     <Route path="/reports" component={Reports} />
