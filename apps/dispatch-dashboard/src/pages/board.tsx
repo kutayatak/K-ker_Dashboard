@@ -48,6 +48,7 @@ import {
   Send,
   Download,
   Calendar as CalendarIcon,
+  Milestone,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
@@ -69,7 +70,8 @@ type TabKey =
   | "gider"
   | "technical"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "km";
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "queue", label: "Kuyruk", short: "Kuyruk" },
@@ -78,6 +80,7 @@ const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "technical", label: "Teknik İşler", short: "Teknik" },
   { key: "completed", label: "Tamamlandı", short: "Tamam" },
   { key: "cancelled", label: "İptaller", short: "İptal" },
+  { key: "km", label: "KM Girişi", short: "KM" },
 ];
 
 export function Board() {
@@ -611,6 +614,49 @@ export function Board() {
     return () => clearInterval(h);
   }, [queryClient]);
 
+  /**
+   * Group tasks without KM by route (pickup + dropoff), sorted by frequency.
+   * Used in the KM Girişi tab.
+   */
+  const kmGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        pickup: string;
+        dropoff: string;
+        count: number;
+        ids: number[];
+        sample: Task;
+      }
+    >();
+
+    for (const t of tasks as any[]) {
+      // Only include tasks that have no KM set (null, undefined, or 0)
+      if (t.km != null && Number(t.km) > 0) continue;
+      // Skip cancelled tasks
+      if (t.status === "cancelled") continue;
+      const pickup = (t.pickupLocation ?? "").trim();
+      const dropoff = (t.dropoffLocation ?? "").trim();
+      const routeKey = `${pickup}|||${dropoff}`;
+      if (!map.has(routeKey)) {
+        map.set(routeKey, {
+          key: routeKey,
+          pickup,
+          dropoff,
+          count: 0,
+          ids: [],
+          sample: t,
+        });
+      }
+      const entry = map.get(routeKey)!;
+      entry.count += 1;
+      entry.ids.push(t.id);
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [tasks]);
+
   const tabCount = (key: TabKey) => {
     if (key === "queue") return queue.length;
     if (key === "gelir") return gelirTasks.length;
@@ -618,6 +664,7 @@ export function Board() {
     if (key === "technical") return technicalTasks.length;
     if (key === "completed") return completedTasks.length;
     if (key === "cancelled") return cancelledTasks.length;
+    if (key === "km") return kmGroups.filter((g) => g.count > 1).length;
     return 0;
   };
 
@@ -824,71 +871,84 @@ export function Board() {
           </div>
         </div>
 
-        {/* ── Desktop: 4-column kanban ──────────────────────────────── */}
-        <div className="hidden md:grid flex-1 grid-cols-5 gap-3 h-full overflow-hidden">
-          <TaskColumn
-            title="Gelir"
-            tasks={gelirTasks}
-            selectable
-            selectedIds={selectedTasks}
-            onSelect={handleSelectTask}
-            onNotifySingle={handleNotifySingle}
-            onComplete={handleComplete}
-            onCancel={handleCancel}
-            onEdit={handleOpenEdit}
-            onUpdateNotify={handleUpdateNotify}
-            onDropAssign={handleDropAssign}
-            onAssignSingle={handleOpenAssignSingle}
-            pendingUpdateIds={pendingUpdateIds}
-          />
-          <TaskColumn
-            title="Gider"
-            tasks={giderTasks}
-            selectable
-            selectedIds={selectedTasks}
-            onSelect={handleSelectTask}
-            onNotifySingle={handleNotifySingle}
-            onComplete={handleComplete}
-            onCancel={handleCancel}
-            onEdit={handleOpenEdit}
-            onUpdateNotify={handleUpdateNotify}
-            onDropAssign={handleDropAssign}
-            onAssignSingle={handleOpenAssignSingle}
-            pendingUpdateIds={pendingUpdateIds}
-          />
-          <TaskColumn
-            title="Teknik İşler"
-            tasks={technicalTasks}
-            selectable
-            selectedIds={selectedTasks}
-            onSelect={handleSelectTask}
-            onNotifySingle={handleNotifySingle}
-            onComplete={handleComplete}
-            onCancel={handleCancel}
-            onEdit={handleOpenEdit}
-            onUpdateNotify={handleUpdateNotify}
-            onDropAssign={handleDropAssign}
-            onAssignSingle={handleOpenAssignSingle}
-            pendingUpdateIds={pendingUpdateIds}
-          />
-          <TaskColumn
-            title="Tamamlandı"
-            tasks={completedTasks}
-            showCompletedColors
-            onCancel={handleCancel}
-            onEdit={handleOpenEdit}
-            pendingUpdateIds={pendingUpdateIds}
-          />
-          <TaskColumn
-            title="İptaller"
-            tasks={cancelledTasks}
-            showCancelledColors
-            onReactivate={handleReactivate}
-            onDeletePermanently={handleDeletePermanently}
-            onEdit={handleOpenEdit}
-            pendingUpdateIds={pendingUpdateIds}
-          />
-        </div>
+        {/* ── Desktop: 4-column kanban (hidden when km tab is active) ── */}
+        {activeTab !== "km" && (
+          <div className="hidden md:grid flex-1 grid-cols-5 gap-3 h-full overflow-hidden">
+            <TaskColumn
+              title="Gelir"
+              tasks={gelirTasks}
+              selectable
+              selectedIds={selectedTasks}
+              onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+            <TaskColumn
+              title="Gider"
+              tasks={giderTasks}
+              selectable
+              selectedIds={selectedTasks}
+              onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+            <TaskColumn
+              title="Teknik İşler"
+              tasks={technicalTasks}
+              selectable
+              selectedIds={selectedTasks}
+              onSelect={handleSelectTask}
+              onNotifySingle={handleNotifySingle}
+              onComplete={handleComplete}
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              onUpdateNotify={handleUpdateNotify}
+              onDropAssign={handleDropAssign}
+              onAssignSingle={handleOpenAssignSingle}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+            <TaskColumn
+              title="Tamamlandı"
+              tasks={completedTasks}
+              showCompletedColors
+              onCancel={handleCancel}
+              onEdit={handleOpenEdit}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+            <TaskColumn
+              title="İptaller"
+              tasks={cancelledTasks}
+              showCancelledColors
+              onReactivate={handleReactivate}
+              onDeletePermanently={handleDeletePermanently}
+              onEdit={handleOpenEdit}
+              pendingUpdateIds={pendingUpdateIds}
+            />
+          </div>
+        )}
+
+        {/* ── Desktop: KM Girişi full-width panel ───────────────────── */}
+        {activeTab === "km" && (
+          <div className="hidden md:flex flex-1 overflow-hidden">
+            <KmEntryTab
+              kmGroups={kmGroups}
+              updateTaskMutation={updateTaskMutation}
+              queryClient={queryClient}
+            />
+          </div>
+        )}
 
         {/* ── Mobile: single active tab ─────────────────────────────── */}
         <div className="flex md:hidden flex-1 flex-col overflow-hidden min-h-0">
@@ -977,6 +1037,15 @@ export function Board() {
               onDeletePermanently={handleDeletePermanently}
               onEdit={handleOpenEdit}
               pendingUpdateIds={pendingUpdateIds}
+            />
+          )}
+
+          {/* ── KM Girişi Tab ────────────────────────────────────────────── */}
+          {activeTab === "km" && (
+            <KmEntryTab
+              kmGroups={kmGroups}
+              updateTaskMutation={updateTaskMutation}
+              queryClient={queryClient}
             />
           )}
         </div>
@@ -2037,6 +2106,268 @@ function EmptyState({ text }: { text: string }) {
   return (
     <div className="text-xs text-muted-foreground text-center py-8 border rounded-lg border-dashed bg-card/30 w-full">
       {text}
+    </div>
+  );
+}
+
+/* ── KM Girişi Tab ────────────────────────────────────────────────────────── */
+type KmGroup = {
+  key: string;
+  pickup: string;
+  dropoff: string;
+  count: number;
+  ids: number[];
+  sample: Task;
+};
+
+function KmEntryTab({
+  kmGroups,
+  updateTaskMutation,
+  queryClient,
+}: {
+  kmGroups: KmGroup[];
+  updateTaskMutation: ReturnType<
+    typeof import("@workspace/api-client-react").useUpdateTask
+  >;
+  queryClient: ReturnType<
+    typeof import("@tanstack/react-query").useQueryClient
+  >;
+}) {
+  const [kmValues, setKmValues] = useState<Record<string, string>>({});
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
+
+  const handleKmSave = async (group: KmGroup) => {
+    const raw = kmValues[group.key];
+    if (raw === undefined || raw.trim() === "") return;
+    const kmNum = Number(raw);
+    if (isNaN(kmNum) || kmNum <= 0) return;
+
+    setSavingKeys((s) => new Set(s).add(group.key));
+
+    try {
+      // Batch update all tasks in this route group
+      await Promise.all(
+        group.ids.map(
+          (id) =>
+            new Promise<void>((resolve, reject) => {
+              updateTaskMutation.mutate(
+                { id, data: { km: kmNum } },
+                { onSuccess: () => resolve(), onError: (e) => reject(e) },
+              );
+            }),
+        ),
+      );
+
+      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+      setSavedKeys((s) => new Set(s).add(group.key));
+      // Remove saved indicator after 3s
+      setTimeout(() => {
+        setSavedKeys((s) => {
+          const next = new Set(s);
+          next.delete(group.key);
+          return next;
+        });
+      }, 3000);
+    } finally {
+      setSavingKeys((s) => {
+        const next = new Set(s);
+        next.delete(group.key);
+        return next;
+      });
+    }
+  };
+
+  // Only show groups with count >= 1, sorted by count desc
+  const displayed = kmGroups;
+  const withKm = displayed.filter((g) => savedKeys.has(g.key)).length;
+
+  return (
+    <div className="flex flex-col w-full h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b bg-card shrink-0 gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Milestone className="w-5 h-5 text-emerald-600" />
+          <div>
+            <h2 className="font-bold text-sm">KM Girişi</h2>
+            <p className="text-xs text-muted-foreground">
+              En sık tekrarlanan rota grupları — bir kez KM girin, tüm ilgili
+              kayıtlara işlenir
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge
+            variant="outline"
+            className="text-emerald-700 border-emerald-300 bg-emerald-50"
+          >
+            {displayed.length} rota grubu
+          </Badge>
+          <Badge
+            variant="outline"
+            className="text-blue-700 border-blue-300 bg-blue-50"
+          >
+            {displayed.reduce((s, g) => s + g.count, 0)} görev
+          </Badge>
+          {withKm > 0 && (
+            <Badge className="bg-emerald-600 text-white">
+              ✓ {withKm} grup kaydedildi
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        {displayed.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2 py-16">
+            <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+            <p className="font-semibold">Tüm görevlerin KM değeri girilmiş!</p>
+            <p className="text-xs">KM eksik görev bulunamadı.</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 border-b">
+              <tr>
+                <th className="text-left p-3 text-xs font-bold text-muted-foreground w-8">
+                  #
+                </th>
+                <th className="text-center p-3 text-xs font-bold text-muted-foreground w-20">
+                  TEKRAR
+                </th>
+                <th className="text-left p-3 text-xs font-bold text-blue-600">
+                  NEREDEN
+                </th>
+                <th className="text-center p-3 text-xs font-bold text-muted-foreground w-8">
+                  →
+                </th>
+                <th className="text-left p-3 text-xs font-bold text-amber-600">
+                  NEREYE
+                </th>
+                <th className="text-center p-3 text-xs font-bold text-muted-foreground w-28">
+                  KM
+                </th>
+                <th className="text-center p-3 text-xs font-bold text-muted-foreground w-24">
+                  DURUM
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {displayed.map((group, idx) => {
+                const isSaving = savingKeys.has(group.key);
+                const isSaved = savedKeys.has(group.key);
+                const kmVal = kmValues[group.key] ?? "";
+                const isHighFreq = group.count >= 3;
+
+                return (
+                  <tr
+                    key={group.key}
+                    className={`transition-colors ${
+                      isSaved
+                        ? "bg-emerald-50/60 dark:bg-emerald-950/20"
+                        : isHighFreq
+                          ? "hover:bg-blue-50/30 dark:hover:bg-blue-950/10"
+                          : "hover:bg-slate-50/50 dark:hover:bg-slate-800/10"
+                    }`}
+                  >
+                    {/* Index */}
+                    <td className="p-3 text-muted-foreground text-xs font-mono">
+                      {idx + 1}
+                    </td>
+
+                    {/* Frequency badge */}
+                    <td className="p-3 text-center">
+                      <span
+                        className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full text-xs font-bold ${
+                          isHighFreq
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                            : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                        }`}
+                      >
+                        {group.count}×
+                      </span>
+                    </td>
+
+                    {/* Pickup */}
+                    <td className="p-3 font-medium max-w-[220px]">
+                      <div className="truncate" title={group.pickup}>
+                        {group.pickup || (
+                          <span className="text-muted-foreground italic">
+                            Belirtilmemiş
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Arrow */}
+                    <td className="p-2 text-center text-muted-foreground">
+                      <ArrowRight className="w-3.5 h-3.5 mx-auto" />
+                    </td>
+
+                    {/* Dropoff */}
+                    <td className="p-3 font-medium max-w-[220px]">
+                      <div className="truncate" title={group.dropoff}>
+                        {group.dropoff || (
+                          <span className="text-muted-foreground italic">
+                            Belirtilmemiş
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* KM input */}
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min={1}
+                        disabled={isSaving || isSaved}
+                        className={`w-full border rounded-md px-2 py-1.5 text-center font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400/50 transition-all text-sm ${
+                          isSaved
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/30"
+                            : "bg-background hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        }`}
+                        value={isSaved ? kmVal : kmVal}
+                        placeholder="KM"
+                        onChange={(e) =>
+                          setKmValues((prev) => ({
+                            ...prev,
+                            [group.key]: e.target.value,
+                          }))
+                        }
+                        onBlur={() => handleKmSave(group)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-2 text-center">
+                      {isSaving ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Yazılıyor...
+                        </span>
+                      ) : isSaved ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          {group.ids.length} kayıt
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {group.ids.length} görev
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
