@@ -463,7 +463,6 @@ export function ImportTasks() {
   // ── Bulk import state ──────────────────────────────────────────────────
   const [bulkFiles, setBulkFiles] = useState<BulkFileEntry[]>([]);
   const [isBulkImporting, setIsBulkImporting] = useState(false);
-  const [bulkDateEditIdx, setBulkDateEditIdx] = useState<number | null>(null);
   const bulkInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File, targetDate: string) => {
