@@ -172,6 +172,14 @@ router.get("/files", async (req, res) => {
   return res.json(files);
 });
 
+// DELETE /excel/files/:id
+// Deletes a stored Excel file by ID
+router.delete("/files/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  await db.delete(excelFilesTable).where(eq(excelFilesTable.id, id));
+  return res.status(204).send();
+});
+
 // GET /excel/has?date=YYYY-MM-DD
 // Returns whether a file is stored for this date
 router.get("/has", async (req, res) => {
