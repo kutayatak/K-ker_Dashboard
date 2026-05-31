@@ -287,6 +287,7 @@ function buildEkstraTask(
   tableType: "left" | "right",
   baseDateStr: string,
   dateOffset: number,
+  isYellowRow = false,
 ): any | null {
   if (tableType === "left") {
     // Columns: A=S.NO, B=ALINIŞ SAAT, C=PLAKA, D=OTEL ADI / AÇIKLAMA
@@ -299,13 +300,13 @@ function buildEkstraTask(
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
     const isTechnical =
+      isYellowRow ||
       desc.toLowerCase().includes("teknik") ||
       desc.toLowerCase().includes("teknık") ||
       desc.toLowerCase().includes("teknk") ||
       desc.toLowerCase().includes("tekn.") ||
       desc.toLowerCase().includes("masraf") ||
       desc.toLowerCase().includes("msrf") ||
-      desc.toLowerCase().includes("bakım") ||
       desc.toLowerCase().includes("bakım") ||
       desc.toLowerCase().includes("arıza") ||
       desc.toLowerCase().includes("yakıt") ||
@@ -352,6 +353,7 @@ function buildEkstraTask(
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
     const isTechnical =
+      isYellowRow ||
       desc.toLowerCase().includes("teknik") ||
       desc.toLowerCase().includes("teknık") ||
       desc.toLowerCase().includes("teknk") ||
@@ -452,13 +454,43 @@ export function ImportTasks() {
         const b64 = dataUrl.split(",")[1];
         setExcelBase64(b64);
 
-        const workbook = xlsx.read(b64, { type: "base64" });
+        const workbook = xlsx.read(b64, { type: "base64", cellStyles: true });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const rows: any[][] = xlsx.utils.sheet_to_json(sheet, {
           header: 1,
           defval: null,
         });
+
+        // Build a map of which rows have a yellow background fill.
+        // Yellow-background rows in the ekstra section are "technical" tasks.
+        const rowIsYellow: boolean[] = new Array(rows.length).fill(false);
+        try {
+          const range = xlsx.utils.decode_range(sheet["!ref"] || "A1");
+          const isYellow = (rgb: string) => {
+            const up = rgb.toUpperCase();
+            // FFFF00 (6-char) or FFFFFF00 (8-char ARGB with full alpha)
+            return (
+              up === "FFFF00" || up === "FFFFFF00" || up.endsWith("FFFF00")
+            );
+          };
+          for (let r = range.s.r; r <= range.e.r; r++) {
+            const arrIdx = r - range.s.r;
+            if (arrIdx >= rows.length) break;
+            for (let c = range.s.c; c <= Math.min(range.e.c, 13); c++) {
+              const cell = sheet[xlsx.utils.encode_cell({ r, c })];
+              if (!cell?.s) continue;
+              const fg = String(cell.s.fgColor?.rgb ?? "");
+              const bg = String(cell.s.bgColor?.rgb ?? "");
+              if (isYellow(fg) || isYellow(bg)) {
+                rowIsYellow[arrIdx] = true;
+                break;
+              }
+            }
+          }
+        } catch (_) {
+          /* Style reading unsupported — text-based detection only */
+        }
 
         if (importMode === "tasks") {
           const tasks: any[] = [];
@@ -585,6 +617,7 @@ export function ImportTasks() {
                 "left",
                 targetDate,
                 dateOffsetLeft,
+                rowIsYellow[i],
               );
               if (leftTask) tasks.push(...splitTask(leftTask));
 
@@ -605,6 +638,7 @@ export function ImportTasks() {
                 "right",
                 targetDate,
                 dateOffsetRight,
+                rowIsYellow[i],
               );
               if (rightTask) tasks.push(...splitTask(rightTask));
             }
