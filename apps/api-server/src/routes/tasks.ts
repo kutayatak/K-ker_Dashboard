@@ -17,7 +17,10 @@ const router = Router();
 // Helper: join task with vehicle info
 async function enrichTask(task: typeof tasksTable.$inferSelect) {
   if (task.vehicleId) {
-    const [vehicle] = await db.select().from(vehiclesTable).where(eq(vehiclesTable.id, task.vehicleId));
+    const [vehicle] = await db
+      .select()
+      .from(vehiclesTable)
+      .where(eq(vehiclesTable.id, task.vehicleId));
     return {
       ...task,
       fee: task.fee ? Number(task.fee) : null,
@@ -25,13 +28,19 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
       driverName: vehicle?.driverName ?? null,
     };
   }
-  return { ...task, fee: task.fee ? Number(task.fee) : null, vehicleName: null, driverName: null };
+  return {
+    ...task,
+    fee: task.fee ? Number(task.fee) : null,
+    vehicleName: null,
+    driverName: null,
+  };
 }
 
 // GET /tasks
 router.get("/", async (req, res) => {
   const parsed = ListTasksQueryParams.safeParse(req.query);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid query params" });
+  if (!parsed.success)
+    return res.status(400).json({ error: "Invalid query params" });
 
   const { status, type, date } = parsed.data;
   const conditions = [];
@@ -42,7 +51,9 @@ router.get("/", async (req, res) => {
     const start = new Date(date);
     const end = new Date(date);
     end.setDate(end.getDate() + 1);
-    conditions.push(sql`${tasksTable.scheduledTime} >= ${start} AND ${tasksTable.scheduledTime} < ${end}`);
+    conditions.push(
+      sql`${tasksTable.scheduledTime} >= ${start} AND ${tasksTable.scheduledTime} < ${end}`,
+    );
   }
 
   const tasks = await db
@@ -53,7 +64,13 @@ router.get("/", async (req, res) => {
     })
     .from(tasksTable)
     .leftJoin(vehiclesTable, eq(tasksTable.vehicleId, vehiclesTable.id))
-    .where(conditions.length ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined);
+    .where(
+      conditions.length
+        ? conditions.length === 1
+          ? conditions[0]
+          : and(...conditions)
+        : undefined,
+    );
 
   const enriched = tasks.map(({ task, vehicleName, driverName }) => ({
     ...task,
@@ -75,10 +92,16 @@ router.get("/summary", async (_req, res) => {
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   const todayCompleted = allTasks.filter(
-    (t) => t.status === "completed" && t.scheduledTime >= today && t.scheduledTime < tomorrow
+    (t) =>
+      t.status === "completed" &&
+      t.scheduledTime >= today &&
+      t.scheduledTime < tomorrow,
   );
 
-  const todayRevenue = todayCompleted.reduce((sum, t) => sum + Number(t.fee ?? 0), 0);
+  const todayRevenue = todayCompleted.reduce(
+    (sum, t) => sum + Number(t.fee ?? 0),
+    0,
+  );
 
   return res.json({
     total: allTasks.length,
@@ -117,14 +140,17 @@ function getBaseAndSuffix(plateStr: string) {
 // POST /tasks/import
 router.post("/import", async (req, res) => {
   const parsed = ImportTasksBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid body", details: parsed.error });
+  if (!parsed.success)
+    return res
+      .status(400)
+      .json({ error: "Invalid body", details: parsed.error });
 
   const { tasks, excelBase64, excelDate, excelFilename } = parsed.data;
 
   // ── Save Excel file if provided ──────────────────────────────────────────
   if (excelBase64 && excelDate) {
     const { excelFilesTable } = await import("@workspace/db");
-    
+
     // Format YYYY-MM-DD to DDMMYY (ggaayy)
     const formatToDDMMYY = (dStr: string) => {
       if (!dStr.includes("-")) return dStr;
@@ -135,10 +161,18 @@ router.post("/import", async (req, res) => {
 
     await db
       .insert(excelFilesTable)
-      .values({ date: ggaayy, filename: excelFilename ?? "import.xlsx", data: excelBase64 })
+      .values({
+        date: ggaayy,
+        filename: excelFilename ?? "import.xlsx",
+        data: excelBase64,
+      })
       .onConflictDoUpdate({
         target: excelFilesTable.date,
-        set: { filename: excelFilename ?? "import.xlsx", data: excelBase64, uploadedAt: new Date() },
+        set: {
+          filename: excelFilename ?? "import.xlsx",
+          data: excelBase64,
+          uploadedAt: new Date(),
+        },
       });
   }
 
@@ -148,7 +182,9 @@ router.post("/import", async (req, res) => {
 
   // Load all vehicles once for efficient space-insensitive matching and in-memory enrichment
   const allVehicles = await db.select().from(vehiclesTable);
-  const vehicleMap = new Map<number, any>(allVehicles.map((v: any) => [v.id, v]));
+  const vehicleMap = new Map<number, any>(
+    allVehicles.map((v: any) => [v.id, v]),
+  );
 
   function enrichTaskInMemory(task: typeof tasksTable.$inferSelect) {
     if (task.vehicleId) {
@@ -160,20 +196,32 @@ router.post("/import", async (req, res) => {
         driverName: vehicle?.driverName ?? null,
       };
     }
-    return { ...task, fee: task.fee ? Number(task.fee) : null, vehicleName: null, driverName: null };
+    return {
+      ...task,
+      fee: task.fee ? Number(task.fee) : null,
+      vehicleName: null,
+      driverName: null,
+    };
   }
 
   // Load existing tasks by importKey in a single batch query
-  const importKeys = tasks.map((t: any) => t.importKey).filter(Boolean) as string[];
+  const importKeys = tasks
+    .map((t: any) => t.importKey)
+    .filter(Boolean) as string[];
   const existingTasks = importKeys.length
     ? await db
-        .select({ id: tasksTable.id, importKey: tasksTable.importKey, vehicleId: tasksTable.vehicleId, status: tasksTable.status })
+        .select({
+          id: tasksTable.id,
+          importKey: tasksTable.importKey,
+          vehicleId: tasksTable.vehicleId,
+          status: tasksTable.status,
+        })
         .from(tasksTable)
         .where(inArray(tasksTable.importKey, importKeys))
     : [];
 
-  const existingTasksMap = new Map<string, typeof existingTasks[number]>(
-    existingTasks.map((et: any) => [et.importKey!, et])
+  const existingTasksMap = new Map<string, (typeof existingTasks)[number]>(
+    existingTasks.map((et: any) => [et.importKey!, et]),
   );
 
   const created: any[] = [];
@@ -192,19 +240,31 @@ router.post("/import", async (req, res) => {
         .delete(tasksTable)
         .where(
           and(
-            sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
-          )
+            sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
+          ),
         );
     }
 
     for (const t of tasks) {
       try {
         let vehicleId: number | null = null;
-        const isImportCancelled = (t as any).status === "cancelled" || 
-          (t.notes && (t.notes.includes("İPTAL") || t.notes.includes("IPTAL") || t.notes.toLowerCase().includes("iptal")));
-        
-        const hasPlate = t.notes && (t.notes.includes("Plaka:") || t.notes.toLowerCase().includes("plaka")) && !isImportCancelled;
-        const status = isImportCancelled ? "cancelled" : (hasPlate ? "completed" : "draft");
+        const isImportCancelled =
+          (t as any).status === "cancelled" ||
+          (t.notes &&
+            (t.notes.includes("İPTAL") ||
+              t.notes.includes("IPTAL") ||
+              t.notes.toLowerCase().includes("iptal")));
+
+        const hasPlate =
+          t.notes &&
+          (t.notes.includes("Plaka:") ||
+            t.notes.toLowerCase().includes("plaka")) &&
+          !isImportCancelled;
+        const status = isImportCancelled
+          ? "cancelled"
+          : hasPlate
+            ? "completed"
+            : "draft";
 
         if (hasPlate && t.notes && !isImportCancelled) {
           const plateMatch = t.notes.match(/Plaka:\s*([^|]+)/i);
@@ -212,18 +272,18 @@ router.post("/import", async (req, res) => {
             const plate = plateMatch[1].trim();
             const imported = getBaseAndSuffix(plate);
             const normalizedImportedBase = normalizePlate(imported.base);
-            
+
             // Match in-memory: find vehicles whose normalized base plate matches the normalized imported base plate
             const matches = allVehicles.filter((v: any) => {
               const dbParsed = getBaseAndSuffix(v.plate);
               return normalizePlate(dbParsed.base) === normalizedImportedBase;
             });
-            
+
             if (matches.length > 0) {
               let vehicle = null;
               const taskTime = new Date(t.scheduledTime);
               const hour = taskTime.getHours();
-              
+
               // Shift hour logic:
               // Vardiya 1: 06:00 to 14:00
               // Vardiya 2: 14:00 to 22:00
@@ -232,13 +292,13 @@ router.post("/import", async (req, res) => {
               if (hour >= 6 && hour < 14) shiftSuffix = "V1";
               else if (hour >= 14 && hour < 22) shiftSuffix = "V2";
               else shiftSuffix = "V3";
-              
+
               const shiftMatch = matches.find((m: any) => {
                 const dbParsed = getBaseAndSuffix(m.plate);
                 return dbParsed.suffix === shiftSuffix;
               });
               vehicle = shiftMatch || matches[0];
-              
+
               if (vehicle) {
                 vehicleId = vehicle.id;
               }
@@ -251,8 +311,10 @@ router.post("/import", async (req, res) => {
         if (!km) {
           const match = presets.find(
             (p: any) =>
-              p.pickupLocation.trim().toLowerCase() === (t.pickupLocation ?? "").trim().toLowerCase() &&
-              p.dropoffLocation.trim().toLowerCase() === (t.dropoffLocation ?? "").trim().toLowerCase()
+              p.pickupLocation.trim().toLowerCase() ===
+                (t.pickupLocation ?? "").trim().toLowerCase() &&
+              p.dropoffLocation.trim().toLowerCase() ===
+                (t.dropoffLocation ?? "").trim().toLowerCase(),
           );
           if (match) km = String(match.km);
         }
@@ -273,18 +335,35 @@ router.post("/import", async (req, res) => {
           status,
           vehicleId: isImportCancelled ? null : vehicleId,
         };
+        const [task] = await tx
+          .insert(tasksTable)
+          .values(values)
+          .onConflictDoNothing()
+          .returning();
 
-        const [task] = await tx.insert(tasksTable).values(values).returning();
-        created.push(enrichTaskInMemory(task));
-      } catch {
+        if (task) {
+          created.push(enrichTaskInMemory(task));
+        } else {
+          skipped++;
+        }
+      } catch (err) {
+        const { logger } = await import("../lib/logger");
+        logger.error(
+          { err, importKey: t.importKey },
+          "Task import insert failed due to unexpected database error",
+        );
         skipped++;
       }
     }
   });
 
-  return res.json({ created: created.length, updated: 0, skipped, tasks: created });
+  return res.json({
+    created: created.length,
+    updated: 0,
+    skipped,
+    tasks: created,
+  });
 });
-
 
 // POST /tasks/batch-notify
 router.post("/batch-notify", async (req, res) => {
@@ -294,20 +373,40 @@ router.post("/batch-notify", async (req, res) => {
   let sent = 0;
   let failed = 0;
 
-  const driverTasks = new Map<number, { phone: string; driverName: string; tasks: typeof tasksTable.$inferSelect[] }>();
+  const driverTasks = new Map<
+    number,
+    {
+      phone: string;
+      driverName: string;
+      tasks: (typeof tasksTable.$inferSelect)[];
+    }
+  >();
 
   for (const taskId of parsed.data.taskIds) {
-    const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+    const [task] = await db
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.id, taskId));
     if (!task || task.status !== "draft" || !task.vehicleId) {
       failed++;
       continue;
     }
 
-    const [vehicle] = await db.select().from(vehiclesTable).where(eq(vehiclesTable.id, task.vehicleId));
-    if (!vehicle) { failed++; continue; }
+    const [vehicle] = await db
+      .select()
+      .from(vehiclesTable)
+      .where(eq(vehiclesTable.id, task.vehicleId));
+    if (!vehicle) {
+      failed++;
+      continue;
+    }
 
     if (!driverTasks.has(task.vehicleId)) {
-      driverTasks.set(task.vehicleId, { phone: vehicle.phone, driverName: vehicle.driverName, tasks: [] });
+      driverTasks.set(task.vehicleId, {
+        phone: vehicle.phone,
+        driverName: vehicle.driverName,
+        tasks: [],
+      });
     }
     driverTasks.get(task.vehicleId)!.tasks.push(task);
   }
@@ -317,22 +416,37 @@ router.post("/batch-notify", async (req, res) => {
   for (const [vehicleId, data] of driverTasks.entries()) {
     // Sort tasks by scheduled time
     const sortedTasks = data.tasks.sort(
-      (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+      (a, b) =>
+        new Date(a.scheduledTime).getTime() -
+        new Date(b.scheduledTime).getTime(),
     );
 
     let messageText = `Merhaba ${data.driverName}\n\n`;
     const updatedTaskIds = [];
 
     for (const task of sortedTasks) {
-      const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
       // Crew notes: use notes field (already contains crew info like "2CPT"), strip plate part
       const crew = task.notes
-        ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+        ? task.notes.includes(" | Plaka:")
+          ? task.notes.split(" | Plaka:")[0]
+          : task.notes
         : "";
       // Direction label based on type
-      const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
+      const direction =
+        task.type === "airport_run"
+          ? "GELİR"
+          : task.type === "hotel_pickup"
+            ? "GİDER"
+            : "EKSTRA";
       // Main location: hotel name
-      const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+      const location =
+        task.type === "airport_run"
+          ? task.dropoffLocation
+          : task.pickupLocation;
       // Flight code
       const flight = task.flightCode ?? "";
 
@@ -350,19 +464,25 @@ router.post("/batch-notify", async (req, res) => {
     if (phone.length === 10) phone = "90" + phone;
 
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`;
-    links.push({ driverName: data.driverName, phone: data.phone, url, taskIds: updatedTaskIds });
+    links.push({
+      driverName: data.driverName,
+      phone: data.phone,
+      url,
+      taskIds: updatedTaskIds,
+    });
 
     // Update status to assigned
     for (const taskId of updatedTaskIds) {
-      await db.update(tasksTable).set({ status: "assigned" }).where(eq(tasksTable.id, taskId));
+      await db
+        .update(tasksTable)
+        .set({ status: "assigned" })
+        .where(eq(tasksTable.id, taskId));
       sent++;
     }
   }
 
   return res.json({ sent, failed, links });
 });
-
-
 
 // POST /tasks
 router.post("/", async (req, res) => {
@@ -387,7 +507,10 @@ router.get("/:id", async (req, res) => {
   const parsed = GetTaskParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
-  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, parsed.data.id));
+  const [task] = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.id, parsed.data.id));
   if (!task) return res.status(404).json({ error: "Task not found" });
 
   return res.json(await enrichTask(task));
@@ -402,9 +525,12 @@ router.patch("/:id", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
   const updateData: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.scheduledTime) updateData.scheduledTime = new Date(parsed.data.scheduledTime);
-  if (parsed.data.actualPickupTime) updateData.actualPickupTime = new Date(parsed.data.actualPickupTime);
-  if (parsed.data.actualDropoffTime) updateData.actualDropoffTime = new Date(parsed.data.actualDropoffTime);
+  if (parsed.data.scheduledTime)
+    updateData.scheduledTime = new Date(parsed.data.scheduledTime);
+  if (parsed.data.actualPickupTime)
+    updateData.actualPickupTime = new Date(parsed.data.actualPickupTime);
+  if (parsed.data.actualDropoffTime)
+    updateData.actualDropoffTime = new Date(parsed.data.actualDropoffTime);
   if (parsed.data.fee != null) updateData.fee = String(parsed.data.fee);
   if (parsed.data.km != null) updateData.km = String(parsed.data.km);
 
@@ -419,12 +545,15 @@ router.patch("/:id", async (req, res) => {
   // If task completed and has a fee, create accounting record
   if (parsed.data.status === "completed" && task.vehicleId && task.fee) {
     const today = new Date().toISOString().split("T")[0];
-    await db.insert(accountingTable).values({
-      vehicleId: task.vehicleId,
-      taskId: task.id,
-      amount: task.fee,
-      date: today,
-    }).onConflictDoNothing();
+    await db
+      .insert(accountingTable)
+      .values({
+        vehicleId: task.vehicleId,
+        taskId: task.id,
+        amount: task.fee,
+        date: today,
+      })
+      .onConflictDoNothing();
 
     // Move vehicle back to empty queue (FIFO — add to end)
     const all = await db
