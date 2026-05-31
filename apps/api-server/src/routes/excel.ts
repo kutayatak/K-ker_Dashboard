@@ -12,6 +12,36 @@ const formatToDDMMYY = (dateStr: string): string => {
   return `${d}${m}${y.slice(2)}`;
 };
 
+// POST /excel/upload
+// Saves or replaces the raw Excel file for a given date (base64 encoded body)
+// Body: { date: "YYYY-MM-DD", filename: string, data: string (base64) }
+router.post("/upload", async (req: any, res: any) => {
+  const { date, filename, data } = req.body ?? {};
+  if (!date || !data) {
+    return res.status(400).json({ error: "date and data are required" });
+  }
+
+  const ggaayy = formatToDDMMYY(date);
+
+  await db
+    .insert(excelFilesTable)
+    .values({
+      date: ggaayy,
+      filename: filename ?? "import.xlsx",
+      data,
+    })
+    .onConflictDoUpdate({
+      target: excelFilesTable.date,
+      set: {
+        filename: filename ?? "import.xlsx",
+        data,
+        uploadedAt: new Date(),
+      },
+    });
+
+  return res.json({ ok: true });
+});
+
 // GET /excel/download?date=YYYY-MM-DD
 // Returns the stored Excel file with plate values written to the correct cells
 router.get("/download", async (req: any, res: any) => {

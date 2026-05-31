@@ -145,36 +145,10 @@ router.post("/import", async (req, res) => {
       .status(400)
       .json({ error: "Invalid body", details: parsed.error });
 
-  const { tasks, excelBase64, excelDate, excelFilename } = parsed.data;
+  const { tasks, excelDate, excelFilename } = parsed.data;
 
-  // ── Save Excel file if provided ──────────────────────────────────────────
-  if (excelBase64 && excelDate) {
-    const { excelFilesTable } = await import("@workspace/db");
-
-    // Format YYYY-MM-DD to DDMMYY (ggaayy)
-    const formatToDDMMYY = (dStr: string) => {
-      if (!dStr.includes("-")) return dStr;
-      const [y, m, d] = dStr.split("-");
-      return `${d}${m}${y.slice(2)}`;
-    };
-    const ggaayy = formatToDDMMYY(excelDate);
-
-    await db
-      .insert(excelFilesTable)
-      .values({
-        date: ggaayy,
-        filename: excelFilename ?? "import.xlsx",
-        data: excelBase64,
-      })
-      .onConflictDoUpdate({
-        target: excelFilesTable.date,
-        set: {
-          filename: excelFilename ?? "import.xlsx",
-          data: excelBase64,
-          uploadedAt: new Date(),
-        },
-      });
-  }
+  // NOTE: Excel file is now saved separately via POST /excel/upload
+  // (excelBase64 is no longer included in tasks/import payload)
 
   // ── Load route presets for auto-KM ──────────────────────────────────────
   const { routePresetsTable } = await import("@workspace/db");

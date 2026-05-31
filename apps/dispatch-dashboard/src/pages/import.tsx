@@ -855,20 +855,44 @@ export function ImportTasks() {
     }
   };
 
-  const handleConfirmTasks = () => {
+  const handleConfirmTasks = async () => {
     if (parsedTasks.length === 0) return;
 
     console.log(
       "excel import: confirming tasks. excelDate (shiftDate):",
       shiftDate,
     );
-    console.log("excel import: tasks payload:", parsedTasks);
 
+    // ── Step 1: Upload the raw Excel file separately ──────────────────────
+    // (kept separate from tasks payload to avoid Vercel 4.5 MB body limit)
+    if (excelBase64 && shiftDate) {
+      try {
+        const uploadRes = await fetch("/api/excel/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: shiftDate,
+            filename: fileName ?? "import.xlsx",
+            data: excelBase64,
+          }),
+        });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({}));
+          console.error("Excel upload failed:", err);
+          // Non-fatal — tasks will still be imported
+        }
+      } catch (e) {
+        console.error("Excel upload request failed:", e);
+        // Non-fatal
+      }
+    }
+
+    // ── Step 2: Import tasks (without excelBase64) ────────────────────────
     importMutation.mutate(
       {
         data: {
           tasks: parsedTasks as any,
-          excelBase64: excelBase64 ?? undefined,
+          // excelBase64 intentionally omitted — uploaded separately above
           excelDate: shiftDate,
           excelFilename: fileName ?? "import.xlsx",
         },
