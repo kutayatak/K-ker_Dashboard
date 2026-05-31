@@ -777,6 +777,33 @@ export function Board() {
             <Download className="w-3.5 h-3.5 mr-1" />
             <span className="hidden md:inline">İndir</span>
           </Button>
+
+          {/* KM Girişi toggle — desktop only (mobile uses tab bar) */}
+          <Button
+            size="sm"
+            variant={activeTab === "km" ? "default" : "outline"}
+            className={`hidden md:flex h-7 px-2 text-xs ml-1 items-center gap-1 ${
+              activeTab === "km"
+                ? "bg-violet-600 hover:bg-violet-700 text-white border-violet-600"
+                : "border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/30"
+            }`}
+            onClick={() =>
+              setActiveTab((prev) => (prev === "km" ? "gelir" : "km"))
+            }
+          >
+            <span>KM Girişi</span>
+            {kmGroups.length > 0 && (
+              <span
+                className={`inline-flex items-center justify-center min-w-[16px] h-[16px] rounded-full text-[10px] font-mono px-1 ${
+                  activeTab === "km"
+                    ? "bg-white/20 text-white"
+                    : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+                }`}
+              >
+                {kmGroups.length}
+              </span>
+            )}
+          </Button>
         </div>
       </div>
 
