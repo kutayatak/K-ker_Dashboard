@@ -30,6 +30,7 @@ export * from './taskStatus';
 export * from './taskType';
 export * from './taskUpdate';
 export * from './taskUpdateStatus';
+export * from './taskUpdateType';
 export * from './vehicle';
 export * from './vehicleInput';
 export * from './vehicleInputType';

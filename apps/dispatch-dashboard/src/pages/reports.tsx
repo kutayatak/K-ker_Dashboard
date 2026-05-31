@@ -4,8 +4,10 @@ import {
   useGetAccountingSummary,
   useListTasks,
   useListVehicles,
+  useUpdateTask,
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { matchVehicleByPlate, extractPlateFromNotes } from "@/lib/plate-utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -29,7 +31,15 @@ import {
   Award,
   Calendar,
   PieChart,
+  ArrowRightLeft,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
 
@@ -42,6 +52,10 @@ export function Reports() {
   >("analytics");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [retypeTask, setRetypeTask] = useState<any | null>(null); // task pending retype confirm
+
+  const queryClient = useQueryClient();
+  const updateTaskMutation = useUpdateTask();
 
   // Fetch detailed accounting records
   const {
@@ -909,6 +923,9 @@ export function Reports() {
                     <TableHead className="font-semibold text-xs tracking-wider uppercase">
                       Durum
                     </TableHead>
+                    <TableHead className="font-semibold text-xs tracking-wider uppercase w-[100px]">
+                      İşlem
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -933,6 +950,10 @@ export function Reports() {
                   ) : (
                     filteredTechnicalTasks.map((t) => {
                       const costCode = getExpenseCode(t);
+                      // Determine which extra category this task would move to
+                      const extraDest = t.dropoffLocation?.includes("Gelir")
+                        ? "Ekstra Gelir"
+                        : "Ekstra Gider";
                       return (
                         <TableRow
                           key={t.id}
@@ -1026,6 +1047,17 @@ export function Reports() {
                               </Badge>
                             )}
                           </TableCell>
+                          {/* ── Retype action ── */}
+                          <TableCell className="text-xs">
+                            <button
+                              title="Ekstraya taşı"
+                              onClick={() => setRetypeTask({ ...t, extraDest })}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40 transition-colors"
+                            >
+                              <ArrowRightLeft className="w-3 h-3" />
+                              Ekstraya Taşı
+                            </button>
+                          </TableCell>
                         </TableRow>
                       );
                     })
@@ -1036,6 +1068,67 @@ export function Reports() {
           </Card>
         </>
       )}
+
+      {/* ── Retype Confirm Dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!retypeTask} onOpenChange={(open) => { if (!open) setRetypeTask(null); }}>
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="w-4 h-4 text-amber-600" />
+              Teknikten Ekstraya Taşı
+            </DialogTitle>
+          </DialogHeader>
+          {retypeTask && (
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Bu iş <span className="font-semibold text-foreground">Teknik</span>'ten{" "}
+                <span className="font-semibold text-amber-700 dark:text-amber-400">Ekstra</span>'ya taşınacak.
+                Bu işlem tüm raporları ve excel görünümünü etkiler.
+              </p>
+              <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+                <div className="font-semibold truncate">{retypeTask.pickupLocation}</div>
+                <div className="text-xs text-muted-foreground">
+                  {format(new Date(retypeTask.scheduledTime), "dd MMMM yyyy", { locale: tr })}{" "}
+                  {utcTime(retypeTask.scheduledTime)}
+                </div>
+                <div className="text-xs">
+                  Teknik Gider/Gelir →{" "}
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">{retypeTask.extraDest}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setRetypeTask(null)}>
+              İptal
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={updateTaskMutation.isPending}
+              onClick={() => {
+                if (!retypeTask) return;
+                updateTaskMutation.mutate(
+                  {
+                    id: retypeTask.id,
+                    data: {
+                      type: "extra",
+                      dropoffLocation: retypeTask.extraDest,
+                    },
+                  },
+                  {
+                    onSuccess: () => {
+                      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+                      setRetypeTask(null);
+                    },
+                  },
+                );
+              }}
+            >
+              {updateTaskMutation.isPending ? "Güncelleniyor..." : "Evet, Ekstraya Taşı"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

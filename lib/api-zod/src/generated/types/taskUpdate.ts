@@ -6,8 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TaskUpdateStatus } from './taskUpdateStatus';
+import type { TaskUpdateType } from './taskUpdateType';
 
 export interface TaskUpdate {
+  type?: TaskUpdateType;
   status?: TaskUpdateStatus;
   /** @nullable */
   vehicleId?: number | null;

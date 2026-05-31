@@ -300,6 +300,7 @@ export const UpdateTaskParams = zod.object({
 })
 
 export const UpdateTaskBody = zod.object({
+  "type": zod.enum(['hotel_pickup', 'airport_run', 'extra', 'technical']).optional(),
   "status": zod.enum(['draft', 'assigned', 'in_progress', 'completed', 'cancelled']).optional(),
   "vehicleId": zod.number().nullish(),
   "flightCode": zod.string().optional(),

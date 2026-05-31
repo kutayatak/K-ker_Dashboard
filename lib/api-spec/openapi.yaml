@@ -556,6 +556,9 @@ components:
     TaskUpdate:
       type: object
       properties:
+        type:
+          type: string
+          enum: [hotel_pickup, airport_run, extra, technical]
         status:
           type: string
           enum: [draft, assigned, in_progress, completed, cancelled]

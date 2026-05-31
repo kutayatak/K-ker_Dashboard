@@ -160,6 +160,16 @@ export interface TaskInput {
   tableType?: string | null;
 }
 
+export type TaskUpdateType = typeof TaskUpdateType[keyof typeof TaskUpdateType];
+
+
+export const TaskUpdateType = {
+  hotel_pickup: 'hotel_pickup',
+  airport_run: 'airport_run',
+  extra: 'extra',
+  technical: 'technical',
+} as const;
+
 export type TaskUpdateStatus = typeof TaskUpdateStatus[keyof typeof TaskUpdateStatus];
 
 
@@ -172,6 +182,7 @@ export const TaskUpdateStatus = {
 } as const;
 
 export interface TaskUpdate {
+  type?: TaskUpdateType;
   status?: TaskUpdateStatus;
   /** @nullable */
   vehicleId?: number | null;
