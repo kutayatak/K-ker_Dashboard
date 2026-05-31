@@ -22,9 +22,116 @@ type ExtendedTask = Task & {
   km?: number | string | null;
 };
 
+const DEFAULT_REGULAR_WIDTHS = [
+  48,  // S.NO
+  100, // UÇUŞ KODU
+  160, // PLAKA (SÜRÜCÜ)
+  64,  // SAAT
+  220, // OTEL ADI / NEREDEN
+  120, // EKİP (KİŞİ)
+  80,  // KM
+  8,   // Separator
+  100, // UÇUŞ KODU
+  160, // PLAKA (SÜRÜCÜ)
+  64,  // SAAT
+  220, // OTEL ADI / NEREYE
+  120, // EKİP (KİŞİ)
+  80   // KM
+];
+
+const DEFAULT_EXTRA_WIDTHS = [
+  48,  // S.NO
+  64,  // SAAT
+  160, // PLAKA (SÜRÜCÜ)
+  320, // OTEL / AÇIKLAMA
+  8,   // Separator
+  64,  // SAAT
+  160, // PLAKA (SÜRÜCÜ)
+  320  // OTEL / AÇIKLAMA
+];
+
 export function ExcelView() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+
+  const [regularWidths, setRegularWidths] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem("excel_view_regular_widths");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 14) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_REGULAR_WIDTHS;
+  });
+
+  const [extraWidths, setExtraWidths] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem("excel_view_extra_widths");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 8) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_EXTRA_WIDTHS;
+  });
+
+  const startResize = (
+    tableType: "regular" | "extra",
+    colIndex: number,
+    startEvent: React.MouseEvent
+  ) => {
+    startEvent.preventDefault();
+    const startX = startEvent.clientX;
+    const startWidths = tableType === "regular" ? [...regularWidths] : [...extraWidths];
+    const startWidth = startWidths[colIndex];
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(30, startWidth + deltaX);
+      if (tableType === "regular") {
+        setRegularWidths((prev) => {
+          const next = [...prev];
+          next[colIndex] = newWidth;
+          return next;
+        });
+      } else {
+        setExtraWidths((prev) => {
+          const next = [...prev];
+          next[colIndex] = newWidth;
+          return next;
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      
+      if (tableType === "regular") {
+        setRegularWidths((latest) => {
+          localStorage.setItem("excel_view_regular_widths", JSON.stringify(latest));
+          return latest;
+        });
+      } else {
+        setExtraWidths((latest) => {
+          localStorage.setItem("excel_view_extra_widths", JSON.stringify(latest));
+          return latest;
+        });
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
 
   // Fetch tasks and vehicles
   const { data: tasks = [], isPending: tasksPending } = useListTasks(
@@ -318,28 +425,116 @@ export function ExcelView() {
           </span>
         </div>
         <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-xs font-mono select-none">
+          <table className="w-full border-collapse text-xs font-mono select-none table-fixed">
+            <colgroup>
+              {regularWidths.map((w, idx) => (
+                <col key={idx} style={{ width: w }} />
+              ))}
+            </colgroup>
             <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
               <tr className="divide-x divide-y divide-border">
                 {/* Left (Gelir) Header */}
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-center w-12">S.NO</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-left min-w-[80px]">UÇUŞ KODU</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-left min-w-[150px]">PLAKA (SÜRÜCÜ)</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-center w-16">SAAT</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-left min-w-[180px]">OTEL ADI / NEREDEN</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-left min-w-[100px]">EKİP (KİŞİ)</th>
-                <th className="bg-blue-500/5 text-blue-700 font-bold p-2 text-center w-20">KM</th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
+                  S.NO
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 0, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
+                  UÇUŞ KODU
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 1, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
+                  PLAKA (SÜRÜCÜ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 2, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
+                  SAAT
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 3, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
+                  OTEL ADI / NEREDEN
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 4, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
+                  EKİP (KİŞİ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 5, e)}
+                  />
+                </th>
+                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
+                  KM
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 6, e)}
+                  />
+                </th>
 
                 {/* Separation Column */}
-                <th className="bg-slate-100 dark:bg-slate-800 p-2 w-2"></th>
+                <th className="bg-slate-100 dark:bg-slate-800 p-2 relative overflow-visible">
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 7, e)}
+                  />
+                </th>
 
                 {/* Right (Gider) Header */}
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-left min-w-[80px]">UÇUŞ KODU</th>
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-left min-w-[150px]">PLAKA (SÜRÜCÜ)</th>
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-center w-16">SAAT</th>
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-left min-w-[180px]">OTEL ADI / NEREYE</th>
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-left min-w-[100px]">EKİP (KİŞİ)</th>
-                <th className="bg-amber-500/5 text-amber-700 font-bold p-2 text-center w-20">KM</th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
+                  UÇUŞ KODU
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 8, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
+                  PLAKA (SÜRÜCÜ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 9, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-center overflow-visible">
+                  SAAT
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 10, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
+                  OTEL ADI / NEREYE
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 11, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
+                  EKİP (KİŞİ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 12, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-center overflow-visible">
+                  KM
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("regular", 13, e)}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -507,22 +702,74 @@ export function ExcelView() {
           </span>
         </div>
         <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-xs font-mono">
+          <table className="w-full border-collapse text-xs font-mono table-fixed">
+            <colgroup>
+              {extraWidths.map((w, idx) => (
+                <col key={idx} style={{ width: w }} />
+              ))}
+            </colgroup>
             <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
               <tr className="divide-x divide-y divide-border">
                 {/* Left Extras Header */}
-                <th className="bg-amber-500/5 text-amber-800 font-bold p-2 text-center w-12">S.NO</th>
-                <th className="bg-amber-500/5 text-amber-800 font-bold p-2 text-center w-16">SAAT</th>
-                <th className="bg-amber-500/5 text-amber-800 font-bold p-2 text-left min-w-[150px]">PLAKA (SÜRÜCÜ)</th>
-                <th className="bg-amber-500/5 text-amber-800 font-bold p-2 text-left min-w-[280px]">OTEL / AÇIKLAMA</th>
+                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-center overflow-visible">
+                  S.NO
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 0, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-center overflow-visible">
+                  SAAT
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 1, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-left overflow-visible">
+                  PLAKA (SÜRÜCÜ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 2, e)}
+                  />
+                </th>
+                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-left overflow-visible">
+                  OTEL / AÇIKLAMA
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 3, e)}
+                  />
+                </th>
 
                 {/* Separation Column */}
-                <th className="bg-slate-100 dark:bg-slate-800 p-2 w-2"></th>
+                <th className="bg-slate-100 dark:bg-slate-800 p-2 relative overflow-visible">
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 4, e)}
+                  />
+                </th>
 
                 {/* Right Extras Header */}
-                <th className="bg-emerald-500/5 text-emerald-800 font-bold p-2 text-center w-16">SAAT</th>
-                <th className="bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left min-w-[150px]">PLAKA (SÜRÜCÜ)</th>
-                <th className="bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left min-w-[280px]">OTEL / AÇIKLAMA</th>
+                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-center overflow-visible">
+                  SAAT
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 5, e)}
+                  />
+                </th>
+                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left overflow-visible">
+                  PLAKA (SÜRÜCÜ)
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 6, e)}
+                  />
+                </th>
+                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left overflow-visible">
+                  OTEL / AÇIKLAMA
+                  <div
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+                    onMouseDown={(e) => startResize("extra", 7, e)}
+                  />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

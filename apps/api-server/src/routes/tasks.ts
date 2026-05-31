@@ -45,11 +45,23 @@ router.get("/", async (req, res) => {
     conditions.push(sql`${tasksTable.scheduledTime} >= ${start} AND ${tasksTable.scheduledTime} < ${end}`);
   }
 
-  const tasks = conditions.length
-    ? await db.select().from(tasksTable).where(conditions.length === 1 ? conditions[0] : and(...conditions))
-    : await db.select().from(tasksTable);
+  const tasks = await db
+    .select({
+      task: tasksTable,
+      vehicleName: vehiclesTable.name,
+      driverName: vehiclesTable.driverName,
+    })
+    .from(tasksTable)
+    .leftJoin(vehiclesTable, eq(tasksTable.vehicleId, vehiclesTable.id))
+    .where(conditions.length ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined);
 
-  const enriched = await Promise.all(tasks.map(enrichTask));
+  const enriched = tasks.map(({ task, vehicleName, driverName }) => ({
+    ...task,
+    fee: task.fee ? Number(task.fee) : null,
+    vehicleName: vehicleName ?? null,
+    driverName: driverName ?? null,
+  }));
+
   return res.json(enriched);
 });
 

@@ -1,38 +1,79 @@
-# K-ker Dashboard - Uygulama İncelemesi ve İyileştirme Önerileri
+# K-ker Dashboard - Uygulama İncelemesi ve Optimizasyon Önerileri
 
-## Genel Bakış ve Mimari
+Mevcut kod tabanı detaylıca incelenmiş ve daha önce hazırlanan önerilerin bir kısmının başarıyla hayata geçirildiği (klasör yapısının `apps/` olarak düzenlenmesi, router lazy loading, backend rate limiting & helmet entegrasyonu vb.) görülmüştür.
 
-**K-ker Dashboard**, görev yönetimi, araç takibi ve operasyonel süreçleri yönetmek için tasarlanmış modern bir monorepo (pnpm workspace) uygulamasıdır. 
-
-### Teknoloji Yığını
-*   **Çalışma Alanı (Workspace):** pnpm workspaces, Node.js 24, TypeScript 5.9
-*   **Frontend (`artifacts/dispatch-dashboard`):** React 19, Vite, TailwindCSS, Radix UI (shadcn/ui benzeri), React Query, Wouter (Routing).
-*   **Backend (`artifacts/api-server`):** Express 5, Drizzle ORM, PostgreSQL.
-*   **Ortak Paketler (`lib/*`):** API spesifikasyonları (OpenAPI), Zod şemaları, Drizzle şemaları ve React Query client'ı paylaşımlı olarak kullanılıyor.
-*   **Dağıtım (Deployment):** Vercel (Serverless Functions yaklaşımı ile `/api` istekleri backend'e yönlendiriliyor).
+Mevcut yapıyı çok daha yüksek performanslı, ölçeklenebilir ve temiz hale getirmek için **güncel ve somut** iyileştirme alanları aşağıda listelenmiştir.
 
 ---
 
-## İyileştirme Önerileri
+## 1. Kritik Performans Optimizasyonları (Veritabanı ve N+1 Problemleri)
 
-Mevcut yapıyı daha ölçeklenebilir, güvenli ve standartlara uygun hale getirmek için aşağıdaki iyileştirmeler uygulanabilir:
+### A. Görev Listeleme Endpoint'indeki N+1 Sorgu Problemi (`GET /tasks`)
+*   **Mevcut Durum (`apps/api-server/src/routes/tasks.ts`):** 
+    Görevler listelenirken her bir görev için `enrichTask` fonksiyonu tetiklenmekte ve eğer görevde atanmış bir araç varsa her seferinde veritabanına tekil bir `SELECT` sorgusu atılmaktadır. 50 görev olan bir günde bu 50+1 veritabanı sorgusu anlamına gelir ve dashboard'un en sık istek attığı endpoint'te ciddi yavaşlığa yol açar.
+*   **Öneri (Çözüm):** 
+    Drizzle ORM'in `.leftJoin()` yapısı kullanılarak görevler ve araçlar tek bir SQL sorgusunda birleştirilmelidir:
+    ```typescript
+    const tasks = await db
+      .select({
+        task: tasksTable,
+        vehicleName: vehiclesTable.name,
+        driverName: vehiclesTable.driverName,
+      })
+      .from(tasksTable)
+      .leftJoin(vehiclesTable, eq(tasksTable.vehicleId, vehiclesTable.id))
+      .where(conditions.length ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined);
+    ```
 
-### 1. Klasör Yapısı ve İsimlendirme
-*   **`artifacts/` Klasörünün Yeniden İsimlendirilmesi:** Monorepo yapılarında uygulamaların (frontend, backend) bulunduğu klasör genellikle `apps/` veya `packages/` olarak isimlendirilir. `artifacts/` ismi genellikle derlenmiş çıktıları veya geçici dosyaları temsil ettiği için kafa karıştırıcı olabilir. Bu klasörün `apps/` olarak değiştirilmesi proje standartlarını artıracaktır.
+### B. Excel İndirme Endpoint'indeki N+1 Sorgu Problemi (`GET /excel/download`)
+*   **Mevcut Durum (`apps/api-server/src/routes/excel.ts`):**
+    Excel çıktısı üretilirken, o güne ait tüm görevlerdeki araçların plakalarını çözmek için döngü (`for (const id of vehicleIds)`) içerisinde tekil `db.select()` sorguları çalıştırılmaktadır.
+*   **Öneri (Çözüm):**
+    Plakalar çekilmeden önce benzersiz araç ID'leri toplanıp Drizzle `inArray` operatörü ile tek seferde toplu olarak çekilmeli ve bellek üzerinde eşleştirilmelidir:
+    ```typescript
+    if (vehicleIds.length > 0) {
+      const vehicles = await db
+        .select({ id: vehiclesTable.id, plate: vehiclesTable.plate })
+        .from(vehiclesTable)
+        .where(inArray(vehiclesTable.id, vehicleIds));
+      for (const v of vehicles) {
+        vehicleMap.set(v.id, v.plate);
+      }
+    }
+    ```
 
-### 2. Frontend İyileştirmeleri (React + Vite)
-*   **Route Lazy Loading (Kod Bölme):** `App.tsx` içerisindeki sayfalar (`Board`, `Vehicles`, `Reports`, `ImportTasks`) şu an doğrudan içe aktarılıyor. Bu sayfaların `React.lazy` ve `Suspense` kullanılarak asenkron yüklenmesi (lazy loading), uygulamanın ilk açılış (initial load) süresini ciddi ölçüde hızlandıracaktır.
-*   **Error Boundaries (Hata Sınırları):** Beklenmedik JavaScript hatalarının tüm uygulamayı çökertmesini engellemek için ana layout veya sayfa düzeyinde bir Error Boundary yapısı (örneğin `react-error-boundary` kütüphanesi ile) kurulmalıdır.
-*   **PWA (Progressive Web App) Desteği:** Sahadaki sürücülerin veya görevlilerin uygulamayı mobil cihazlarında daha rahat kullanabilmesi için Vite PWA eklentisi kurularak çevrimdışı (offline) yetenekler ve ana ekrana ekleme özelliği kazandırılabilir.
+---
 
-### 3. Backend İyileştirmeleri (Express + Drizzle)
-*   **Global Error Handler:** Express sunucusunda tüm hataları tek bir merkezden yakalayıp standart bir formatta (örn. tutarlı bir JSON yapısı) döndüren global bir hata yakalama ara yazılımı (middleware) eklenmelidir.
-*   **Güvenlik Ara Yazılımları:** Backend'e `helmet` kütüphanesi eklenerek HTTP başlıkları (headers) güvenlik açısından sıkılaştırılabilir. Ayrıca, `/api` rotaları için `express-rate-limit` kullanılarak olası DDoS veya brute-force saldırılarına karşı oran sınırlaması (rate limiting) getirilmelidir.
-*   **Veritabanı Migrasyon Stratejisi:** Geliştirme ortamı için `drizzle-kit push` kullanılıyor. Ancak üretim (production) ortamı için standart migrasyon dosyalarının oluşturulması (`drizzle-kit generate` ve `drizzle-kit migrate`) ve deployment sürecinde bu migrasyonların otomatik çalıştırılması gereklidir.
-*   **Bağlantı Havuzlaması (Connection Pooling):** Vercel gibi serverless ortamlarda veritabanı bağlantıları hızla tükenebilir. PostgreSQL (Neon) bağlantısı için mutlaka bir connection pooler (örn. PgBouncer veya Neon'un sunduğu havuzlama) kullanıldığından emin olunmalıdır.
+## 2. Kod Yapısı ve Modülerlik (Frontend)
 
-### 4. Geliştirici Deneyimi (DX) ve Kod Kalitesi
-*   **README Güncellemesi:** Proje kök dizinindeki `README.md` dosyası varsayılan şablon (boilerplate) metinler içeriyor. Projenin amacı, kurulum adımları ve ortam değişkenleri detaylandırılarak güncellenmelidir.
-*   **Çevre Değişkenleri (Env Vars) Doğrulaması:** Uygulama başlatılırken gerekli `.env` değişkenlerinin (örn. `DATABASE_URL`) varlığını ve tipini Zod ile kontrol eden bir mekanizma (`t3-env` gibi) kurulabilir. Bu, eksik konfigürasyon nedeniyle çalışma zamanında (runtime) çökmeleri engeller.
-*   **Git Hooks ve Linting:** Kod standartlarını korumak için `husky` ve `lint-staged` kurularak, her commit öncesi otomatik olarak `eslint`, `prettier` ve `typecheck` süreçlerinin çalışması sağlanmalıdır.
-*   **Test Altyapısı:** Projede unit veya entegrasyon testi altyapısı görünmüyor. Hem frontend hem de backend için `Vitest` eklenerek kritik iş mantığı (özellikle muhasebe, uçuş takibi ve görev atamaları) için otomatik testler yazılmaya başlanmalıdır.
+### A. Devasa Bileşen Dosyası (`board.tsx`)
+*   **Mevcut Durum:** `apps/dispatch-dashboard/src/pages/board.tsx` dosyası yaklaşık **1730 satır** ve **74KB** büyüklüğündedir. Bu büyüklük kodun okunabilirliğini, bakımını ve test edilebilirliğini zorlaştırmaktadır.
+*   **Öneri:**
+    *   **Bileşen Bölme (Component Splitting):** `TaskCard`, `TaskColumn`, `QueueList` gibi iç bileşenler kendi bağımsız dosyalarına (örn: `components/board/TaskCard.tsx`) taşınmalıdır.
+    *   **İş Mantığının Soyutlanması (Custom Hooks):** Sürükle-bırak (drag-drop) mantığı, Excel indirme, WhatsApp bildirim gönderme ve uçuş durum kontrolü gibi state ve mutasyon yönetimleri özel React hook'larına (örn: `useBoardActions.ts`) aktarılarak UI kodu sadeleştirilebilir.
+
+### B. Sanallaştırılmış Liste (Virtualized List) Desteği
+*   **Mevcut Durum:** Yoğun günlerde yüzlerce görev veya kuyrukta çok sayıda araç listelendiğinde DOM elementlerinin sayısı artarak arayüzde kasmaya yol açabilir.
+*   **Öneri:** `react-window` veya `@tanstack/react-virtual` kullanılarak sadece ekranda görünen kartların render edilmesi sağlanabilir.
+
+---
+
+## 3. Altyapı ve Canlı Ortam Hazırlığı (DevOps & Backend)
+
+### A. PostgreSQL Serverless Bağlantı Havuzlaması (Connection Pooling)
+*   **Mevcut Durum:** Projede Drizzle ve PostgreSQL kullanılmaktadır. Sunucu Vercel üzerinde çalıştığı için her istek yeni bir serverless fonksiyon ayağa kaldırabilir. Bu durum veritabanı bağlantı limitlerinin (Neon Postgres vb.) çok hızlı tüketilmesine neden olur.
+*   **Öneri:** Veritabanı bağlantı string'i olarak Neon/Supabase'in sunduğu **PgBouncer** havuzlanmış bağlantı portu/adresi kullanılmalıdır ve Drizzle yapılandırması buna göre optimize edilmelidir.
+
+### B. Otomatik Migrasyon Altyapısı (Migration Strategy)
+*   **Mevcut Durum:** Geliştirme aşamasında şema güncellemeleri için `drizzle-kit push` komutu kullanılmaktadır.
+*   **Öneri:** Canlı (Production) ortamın veri kaybı yaşamaması ve stabil çalışması için Drizzle migrations yapısına (`drizzle-kit generate` ve `drizzle-kit migrate`) geçiş kurgulanmalıdır. CI/CD hattına otomatik migrasyon adımları eklenmelidir.
+
+---
+
+## 4. Gerçekleştirilen / Zaten Devreye Alınan İyileştirmeler
+
+Analiz sırasında aşağıdaki maddelerin zaten çok iyi bir şekilde çözüldüğü görülmüştür:
+1.  **Klasör Yapısı:** Kafa karıştırıcı olan `artifacts/` klasörleri düzeltilmiş, `apps/` (api-server, dispatch-dashboard) ve `lib/` (ortak kütüphaneler) olarak temiz bir monorepo standardına kavuşturulmuştur.
+2.  **Güvenlik:** Express backend sunucusunda `helmet` ile HTTP başlık güvenliği ve `express-rate-limit` ile API hız sınırlandırılması yapılmıştır.
+3.  **Hata Yönetimi:** Backend'de `errorHandler` middleware'i ile global hata yakalama ve frontend'de `ErrorBoundary` kurgulanmıştır.
+4.  **Route Lazy Loading:** Sayfaların tamamı Vite ve React `lazy` / `Suspense` kullanılarak asenkron yüklenecek şekilde tasarlanmıştır.

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, excelFilesTable, tasksTable, vehiclesTable } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
 import ExcelJS from "exceljs";
 
 const router = Router();
@@ -44,15 +44,17 @@ router.get("/download", async (req: any, res: any) => {
       sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
     );
 
-  // Load vehicle plates
+  // Load vehicle plates in a single batch query to avoid N+1 issue
   const vehicleIds = [...new Set(tasks.map((t) => t.vehicleId).filter(Boolean))] as number[];
   const vehicleMap = new Map<number, string>();
-  for (const id of vehicleIds) {
-    const [v] = await db
-      .select({ plate: vehiclesTable.plate })
+  if (vehicleIds.length > 0) {
+    const vehicles = await db
+      .select({ id: vehiclesTable.id, plate: vehiclesTable.plate })
       .from(vehiclesTable)
-      .where(eq(vehiclesTable.id, id));
-    if (v) vehicleMap.set(id, v.plate);
+      .where(inArray(vehiclesTable.id, vehicleIds));
+    for (const v of vehicles) {
+      vehicleMap.set(v.id, v.plate);
+    }
   }
 
   const getPlateFromNotes = (notes: string | null | undefined): string => {
