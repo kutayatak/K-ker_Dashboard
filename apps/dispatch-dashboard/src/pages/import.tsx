@@ -1080,11 +1080,12 @@ export function ImportTasks() {
         if (!uploadRes.ok) {
           const err = await uploadRes.json().catch(() => ({}));
           console.error("Excel upload failed:", err);
-          // Non-fatal — tasks will still be imported
+          const detail = err?.detail || err?.error || `HTTP ${uploadRes.status}`;
+          alert(`⚠️ Excel dosyası kaydedilemedi: ${detail}\n\nGörevler yine de içe aktarılacak, ancak daha sonra Excel indirme çalışmayabilir.`);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Excel upload request failed:", e);
-        // Non-fatal
+        alert(`⚠️ Excel dosyası yüklenirken bağlantı hatası oluştu: ${e?.message || e}\n\nGörevler yine de içe aktarılacak, ancak daha sonra Excel indirme çalışmayabilir.`);
       }
     }
 

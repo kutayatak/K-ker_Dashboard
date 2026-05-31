@@ -12,6 +12,28 @@ const formatToDDMMYY = (dateStr: string): string => {
   return `${d}${m}${y.slice(2)}`;
 };
 
+// Normalize any date string to YYYY-MM-DD for comparison
+// Accepts: "YYYY-MM-DD", "DDMMYY" (6-digit), "DDMMYYYY" (8-digit)
+const normalizeToYMD = (dateStr: string): string => {
+  if (!dateStr) return "";
+  if (dateStr.includes("-") && dateStr.length === 10) return dateStr; // already YYYY-MM-DD
+  if (/^\d{6}$/.test(dateStr)) {
+    // DDMMYY
+    const d = dateStr.slice(0, 2);
+    const m = dateStr.slice(2, 4);
+    const y = "20" + dateStr.slice(4, 6);
+    return `${y}-${m}-${d}`;
+  }
+  if (/^\d{8}$/.test(dateStr)) {
+    // DDMMYYYY
+    const d = dateStr.slice(0, 2);
+    const m = dateStr.slice(2, 4);
+    const y = dateStr.slice(4, 8);
+    return `${y}-${m}-${d}`;
+  }
+  return dateStr;
+};
+
 // POST /excel/upload
 // Saves or replaces the raw Excel file for a given date (base64 encoded body)
 // Body: { date: "YYYY-MM-DD", filename: string, data: string (base64) }
@@ -21,25 +43,49 @@ router.post("/upload", async (req: any, res: any) => {
     return res.status(400).json({ error: "date and data are required" });
   }
 
-  const ggaayy = formatToDDMMYY(date);
+  try {
+    // Always normalize to YYYY-MM-DD for consistent storage
+    const normalizedDate = normalizeToYMD(date);
+    const legacyDMY = formatToDDMMYY(normalizedDate);
 
-  await db
-    .insert(excelFilesTable)
-    .values({
-      date: ggaayy,
-      filename: filename ?? "import.xlsx",
-      data,
-    })
-    .onConflictDoUpdate({
-      target: excelFilesTable.date,
-      set: {
-        filename: filename ?? "import.xlsx",
-        data,
-        uploadedAt: new Date(),
-      },
+    // Strip data URL prefix if accidentally included (e.g. "data:...;base64,")
+    const cleanData = data.includes(",") ? data.split(",")[1] : data;
+
+    // Check if an existing record exists under either format (legacy DDMMYY or new YYYY-MM-DD)
+    const allFiles = await db.select({ id: excelFilesTable.id, date: excelFilesTable.date }).from(excelFilesTable);
+    const existing = allFiles.find((f) => {
+      const norm = normalizeToYMD(f.date);
+      return norm === normalizedDate || f.date === legacyDMY || f.date === normalizedDate;
     });
 
-  return res.json({ ok: true });
+    if (existing) {
+      // Update existing record (whether stored as DDMMYY or YYYY-MM-DD)
+      await db
+        .update(excelFilesTable)
+        .set({
+          date: normalizedDate, // Migrate to canonical YYYY-MM-DD format
+          filename: filename ?? "import.xlsx",
+          data: cleanData,
+          uploadedAt: new Date(),
+        })
+        .where(eq(excelFilesTable.id, existing.id));
+    } else {
+      // Insert new record using canonical YYYY-MM-DD format
+      await db.insert(excelFilesTable).values({
+        date: normalizedDate,
+        filename: filename ?? "import.xlsx",
+        data: cleanData,
+      });
+    }
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error("[excel/upload] error:", err);
+    return res.status(500).json({
+      error: "Excel dosyası kaydedilirken bir hata oluştu.",
+      detail: err?.message ?? String(err),
+    });
+  }
 });
 
 // GET /excel/download?date=YYYY-MM-DD
@@ -51,156 +97,168 @@ router.get("/download", async (req: any, res: any) => {
       .status(400)
       .json({ error: "date query param required (YYYY-MM-DD)" });
 
-  const dmy = formatToDDMMYY(date);
+  try {
+    // Normalize the requested date to YYYY-MM-DD for reliable comparison
+    const requestedYMD = normalizeToYMD(date);
+    const requestedDMY = formatToDDMMYY(requestedYMD);
 
-  const [file] = await db
-    .select()
-    .from(excelFilesTable)
-    .where(
-      sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`,
-    );
+    // Fetch all files and match in JS to avoid SQL type/format issues
+    const allFiles = await db.select().from(excelFilesTable);
+    const file = allFiles.find((f) => {
+      const normalizedDb = normalizeToYMD(f.date);
+      return normalizedDb === requestedYMD || f.date === requestedDMY || f.date === requestedYMD;
+    });
 
-  if (!file)
-    return res
-      .status(404)
-      .json({ error: "No Excel file stored for this date" });
+    if (!file)
+      return res
+        .status(404)
+        .json({ error: `No Excel file stored for this date (tried: ${requestedYMD} / ${requestedDMY})` });
 
-  // Decode base64 → buffer → workbook
-  const buf = Buffer.from(file.data, "base64");
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(buf as any);
+    // Decode base64 → buffer → workbook
+    // Strip data URL prefix if present (e.g. "data:...;base64,")
+    const rawData = file.data.includes(",") ? file.data.split(",")[1] : file.data;
+    const buf = Buffer.from(rawData, "base64");
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
 
-  const [y, m, d] = date.split("-").map(Number);
-  const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-  const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
+    const [y, m, d] = requestedYMD.split("-").map(Number);
+    const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+    const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
 
-  const tasks = await db
-    .select({
-      rowIndex: tasksTable.rowIndex,
-      tableType: tasksTable.tableType,
-      vehicleId: tasksTable.vehicleId,
-      km: tasksTable.km,
-      status: tasksTable.status,
-      type: tasksTable.type,
-      notes: tasksTable.notes,
-    })
-    .from(tasksTable)
-    .where(
-      sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
-    );
+    const tasks = await db
+      .select({
+        rowIndex: tasksTable.rowIndex,
+        tableType: tasksTable.tableType,
+        vehicleId: tasksTable.vehicleId,
+        km: tasksTable.km,
+        status: tasksTable.status,
+        type: tasksTable.type,
+        notes: tasksTable.notes,
+      })
+      .from(tasksTable)
+      .where(
+        sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
+      );
 
-  // Load vehicle plates in a single batch query to avoid N+1 issue
-  const vehicleIds = [
-    ...new Set(tasks.map((t) => t.vehicleId).filter(Boolean)),
-  ] as number[];
-  const vehicleMap = new Map<number, string>();
-  if (vehicleIds.length > 0) {
-    const vehicles = await db
-      .select({ id: vehiclesTable.id, plate: vehiclesTable.plate })
-      .from(vehiclesTable)
-      .where(inArray(vehiclesTable.id, vehicleIds));
-    for (const v of vehicles) {
-      vehicleMap.set(v.id, v.plate);
+    // Load vehicle plates in a single batch query to avoid N+1 issue
+    const vehicleIds = [
+      ...new Set(tasks.map((t) => t.vehicleId).filter(Boolean)),
+    ] as number[];
+    const vehicleMap = new Map<number, string>();
+    if (vehicleIds.length > 0) {
+      const vehicles = await db
+        .select({ id: vehiclesTable.id, plate: vehiclesTable.plate })
+        .from(vehiclesTable)
+        .where(inArray(vehiclesTable.id, vehicleIds));
+      for (const v of vehicles) {
+        vehicleMap.set(v.id, v.plate);
+      }
     }
-  }
 
-  const getPlateFromNotes = (notes: string | null | undefined): string => {
-    if (!notes) return "";
-    const match = notes.match(/Plaka:\s*([^|]+)/i);
-    return match ? match[1].trim() : "";
-  };
+    const getPlateFromNotes = (notes: string | null | undefined): string => {
+      if (!notes) return "";
+      const match = notes.match(/Plaka:\s*([^|]+)/i);
+      return match ? match[1].trim() : "";
+    };
 
-  // Write plates and KM into sheet 1 (index 0) — first sheet is the main list
-  const ws = wb.worksheets[0];
-  if (ws) {
-    for (const task of tasks) {
-      if (task.rowIndex == null) continue;
-      const row = task.rowIndex; // 1-based Excel row
+    // Write plates and KM into sheet 1 (index 0) — first sheet is the main list
+    const ws = wb.worksheets[0];
+    if (ws) {
+      for (const task of tasks) {
+        if (task.rowIndex == null) continue;
+        const row = task.rowIndex; // 1-based Excel row
 
-      if (task.tableType === "left") {
-        // GELİR — left table: PLAKA = C, KM = G
-        const cellPlate = ws.getCell(`C${row}`);
-        const cellKm = ws.getCell(`G${row}`);
+        if (task.tableType === "left") {
+          // GELİR — left table: PLAKA = C, KM = G
+          const cellPlate = ws.getCell(`C${row}`);
+          const cellKm = ws.getCell(`G${row}`);
 
-        if (task.status === "cancelled") {
-          cellPlate.value = "İPTAL";
-        } else {
-          let plate = "";
-          if (task.vehicleId) {
-            plate = vehicleMap.get(task.vehicleId) ?? "";
-          } else if (task.notes) {
-            plate = getPlateFromNotes(task.notes);
+          if (task.status === "cancelled") {
+            cellPlate.value = "İPTAL";
+          } else {
+            let plate = "";
+            if (task.vehicleId) {
+              plate = vehicleMap.get(task.vehicleId) ?? "";
+            } else if (task.notes) {
+              plate = getPlateFromNotes(task.notes);
+            }
+            if (plate) {
+              cellPlate.value = plate;
+            }
           }
-          if (plate) {
-            cellPlate.value = plate;
+          if (task.km) {
+            cellKm.value = Number(task.km);
           }
-        }
-        if (task.km) {
-          cellKm.value = Number(task.km);
-        }
 
-        // Apply yellow background to technical tasks if possible
-        if (task.type === "technical") {
-          ["B", "C", "D", "G"].forEach((col) => {
-            const cell = ws.getCell(`${col}${row}`);
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFFFFFFF" },
-            };
-          });
-        }
-      } else if (task.tableType === "right") {
-        // GİDER — right table: PLAKA = I, KM = M
-        const cellPlate = ws.getCell(`I${row}`);
-        const cellKm = ws.getCell(`M${row}`);
-
-        if (task.status === "cancelled") {
-          cellPlate.value = "İPTAL";
-        } else {
-          let plate = "";
-          if (task.vehicleId) {
-            plate = vehicleMap.get(task.vehicleId) ?? "";
-          } else if (task.notes) {
-            plate = getPlateFromNotes(task.notes);
+          // Apply yellow background to technical tasks if possible
+          if (task.type === "technical") {
+            ["B", "C", "D", "G"].forEach((col) => {
+              const cell = ws.getCell(`${col}${row}`);
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFFFFF" },
+              };
+            });
           }
-          if (plate) {
-            cellPlate.value = plate;
-          }
-        }
-        if (task.km) {
-          cellKm.value = Number(task.km);
-        }
+        } else if (task.tableType === "right") {
+          // GİDER — right table: PLAKA = I, KM = M
+          const cellPlate = ws.getCell(`I${row}`);
+          const cellKm = ws.getCell(`M${row}`);
 
-        // Apply yellow background to technical tasks if possible
-        if (task.type === "technical") {
-          ["H", "I", "J", "M"].forEach((col) => {
-            const cell = ws.getCell(`${col}${row}`);
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: "FFFFFFFF" },
-            };
-          });
+          if (task.status === "cancelled") {
+            cellPlate.value = "İPTAL";
+          } else {
+            let plate = "";
+            if (task.vehicleId) {
+              plate = vehicleMap.get(task.vehicleId) ?? "";
+            } else if (task.notes) {
+              plate = getPlateFromNotes(task.notes);
+            }
+            if (plate) {
+              cellPlate.value = plate;
+            }
+          }
+          if (task.km) {
+            cellKm.value = Number(task.km);
+          }
+
+          // Apply yellow background to technical tasks if possible
+          if (task.type === "technical") {
+            ["H", "I", "J", "M"].forEach((col) => {
+              const cell = ws.getCell(`${col}${row}`);
+              cell.fill = {
+                type: "pattern",
+                pattern: "solid",
+                fgColor: { argb: "FFFFFFFF" },
+              };
+            });
+          }
         }
       }
     }
+
+    // Write back to buffer and send
+    // NOTE: Do NOT set Content-Length — it causes truncation in some serverless envs
+    const outBuf = Buffer.from(await wb.xlsx.writeBuffer());
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="sevkiyat_${requestedYMD}.xlsx"`,
+    );
+    // Use res.send() — handles binary buffers correctly in serverless environments
+    return res.send(outBuf);
+  } catch (err: any) {
+    console.error("[excel/download] error:", err);
+    return res.status(500).json({
+      error: "Excel dosyası oluşturulurken bir hata oluştu.",
+      detail: err?.message ?? String(err),
+    });
   }
-
-  // Write back to buffer — preserve existing format
-  const outBuf = Buffer.from(await wb.xlsx.writeBuffer());
-
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="sevkiyat_${date}.xlsx"`,
-  );
-  res.setHeader("Content-Length", outBuf.length);
-  // Use res.end() for binary data — more reliable in serverless environments
-  return res.end(outBuf);
 });
 
 // GET /excel/files
@@ -271,18 +329,23 @@ router.get("/has", async (req, res) => {
   const date = req.query.date as string;
   if (!date)
     return res.status(400).json({ error: "date query param required" });
-  const dmy = formatToDDMMYY(date);
 
-  const [file] = await db
+  const requestedYMD = normalizeToYMD(date);
+  const requestedDMY = formatToDDMMYY(requestedYMD);
+
+  const allFiles = await db
     .select({
       id: excelFilesTable.id,
       filename: excelFilesTable.filename,
       uploadedAt: excelFilesTable.uploadedAt,
+      date: excelFilesTable.date,
     })
-    .from(excelFilesTable)
-    .where(
-      sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`,
-    );
+    .from(excelFilesTable);
+
+  const file = allFiles.find((f) => {
+    const norm = normalizeToYMD(f.date);
+    return norm === requestedYMD || f.date === requestedDMY || f.date === requestedYMD;
+  });
 
   return res.json({
     exists: !!file,
