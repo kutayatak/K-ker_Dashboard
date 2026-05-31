@@ -1,19 +1,28 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { 
-  Sidebar, 
-  SidebarContent, 
-  SidebarHeader, 
-  SidebarMenu, 
-  SidebarMenuItem, 
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
   SidebarMenuButton,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarFooter,
-  SidebarTrigger
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { Plane, Car, Upload, BarChart3, Moon, Sun, FileSpreadsheet, FolderOpen } from "lucide-react";
+import {
+  Plane,
+  Car,
+  Upload,
+  BarChart3,
+  Moon,
+  Sun,
+  FileSpreadsheet,
+  FolderOpen,
+} from "lucide-react";
 
 /* ── Dark mode hook ─────────────────────────────────────────────────────── */
 function useDarkMode() {
@@ -71,7 +80,10 @@ export function AppSidebar() {
                 return (
                   <SidebarMenuItem key={item.name}>
                     <SidebarMenuButton asChild isActive={isActive}>
-                      <Link href={item.href} className="flex items-center gap-3 w-full">
+                      <Link
+                        href={item.href}
+                        className="flex items-center gap-3 w-full"
+                      >
                         <item.icon size={16} />
                         <span>{item.name}</span>
                       </Link>
@@ -98,14 +110,18 @@ export function AppSidebar() {
             <Sun
               size={16}
               className={`absolute inset-0 transition-all duration-300 ${
-                dark ? "opacity-100 rotate-0 scale-100" : "opacity-0 -rotate-90 scale-50"
+                dark
+                  ? "opacity-100 rotate-0 scale-100"
+                  : "opacity-0 -rotate-90 scale-50"
               }`}
             />
             {/* Moon icon — shown in light mode (click to go dark) */}
             <Moon
               size={16}
               className={`absolute inset-0 transition-all duration-300 ${
-                dark ? "opacity-0 rotate-90 scale-50" : "opacity-100 rotate-0 scale-100"
+                dark
+                  ? "opacity-0 rotate-90 scale-50"
+                  : "opacity-100 rotate-0 scale-100"
               }`}
             />
           </div>
@@ -141,7 +157,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <div className="w-6 h-6 bg-blue-500 rounded flex items-center justify-center text-white">
                 <Plane size={14} />
               </div>
-              K-ker Dashboard
+              Köker
             </div>
           </div>
         </header>

@@ -857,7 +857,8 @@ export function ExcelView() {
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
-          <div>
+          {/* Title — hidden on mobile (layout header serves that role) */}
+          <div className="hidden md:block">
             <h1 className="text-xl md:text-2xl font-bold tracking-tight leading-tight flex items-center gap-2">
               <FileSpreadsheet className="text-emerald-600" />
               Excel Sefer Görünümü
@@ -867,8 +868,8 @@ export function ExcelView() {
               ızgarasında yapın
             </p>
           </div>
-          <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1.5 rounded-md border border-slate-100 dark:border-slate-800">
-            <span className="text-xs font-semibold text-muted-foreground pl-1">
+          <div className="flex items-center gap-2 bg-muted/30 p-1.5 rounded-md border border-slate-100 dark:border-slate-800">
+            <span className="text-xs font-semibold text-muted-foreground pl-1 hidden md:inline">
               Vardiya Tarihi:
             </span>
             <Popover>
@@ -880,7 +881,7 @@ export function ExcelView() {
                 >
                   <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
                   {selectedDate
-                    ? format(new Date(selectedDate), "dd MMMM yyyy", {
+                    ? format(new Date(selectedDate), "dd MMM yyyy", {
                         locale: tr,
                       })
                     : ""}
@@ -924,14 +925,14 @@ export function ExcelView() {
             onClick={handleDownloadExcel}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
           >
-            <Download className="w-4 h-4 mr-1.5" />
-            Excel İndir
+            <Download className="w-4 h-4 md:mr-1.5" />
+            <span className="hidden md:inline">Excel İndir</span>
           </Button>
         </div>
       </div>
 
-      {/* ── Main layout: queue panel + tables ───────────────────────────── */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      {/* ── Main layout: queue panel + tables (DESKTOP only) ─────────────── */}
+      <div className="hidden md:flex gap-4 flex-1 min-h-0">
         {/* ── Vehicle Queue Panel ────────────────────────────────────────── */}
         <Card
           className="flex flex-col shrink-0 border-slate-200/80 shadow-sm overflow-hidden"
@@ -1705,6 +1706,392 @@ export function ExcelView() {
           </Card>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+           MOBILE VIEW — tab-based card layout (visible only on small screens)
+         ══════════════════════════════════════════════════════════════════ */}
+      <MobileExcelView
+        dayTasks={dayTasks}
+        leftRegular={leftRegular}
+        rightRegular={rightRegular}
+        leftExtras={leftExtras}
+        rightExtras={rightExtras}
+        technicalTasks={technicalTasks}
+        vehicles={vehicles as any[]}
+        localQueue={localQueue}
+        draggedQueueIndex={draggedQueueIndex}
+        handleQueueDragStart={handleQueueDragStart}
+        handleQueueDragOver={handleQueueDragOver}
+        handleQueueDragEnd={handleQueueDragEnd}
+        handleRemoveFromQueue={handleRemoveFromQueue}
+        handleAddToQueue={handleAddToQueue}
+        isAddQueueOpen={isAddQueueOpen}
+        setIsAddQueueOpen={setIsAddQueueOpen}
+        selectedVehicleId={selectedVehicleId}
+        setSelectedVehicleId={setSelectedVehicleId}
+        availableVehicles={availableVehicles}
+        handlePlateChange={handlePlateChange}
+        getPlateFromNotes={getPlateFromNotes}
+        openEdit={openEdit}
+        tasksPending={tasksPending}
+      />
+    </div>
+  );
+}
+
+// ── Mobile-only view ─────────────────────────────────────────────────────────
+type MobileTab = "gelir" | "gider" | "ekstra" | "teknik" | "sira";
+
+function MobileExcelView({
+  leftRegular,
+  rightRegular,
+  leftExtras,
+  rightExtras,
+  technicalTasks,
+  vehicles,
+  localQueue,
+  draggedQueueIndex,
+  handleQueueDragStart,
+  handleQueueDragOver,
+  handleQueueDragEnd,
+  handleRemoveFromQueue,
+  handleAddToQueue,
+  isAddQueueOpen,
+  setIsAddQueueOpen,
+  selectedVehicleId,
+  setSelectedVehicleId,
+  availableVehicles,
+  handlePlateChange,
+  getPlateFromNotes,
+  openEdit,
+}: {
+  dayTasks: ExtendedTask[];
+  leftRegular: ExtendedTask[];
+  rightRegular: ExtendedTask[];
+  leftExtras: ExtendedTask[];
+  rightExtras: ExtendedTask[];
+  technicalTasks: ExtendedTask[];
+  vehicles: any[];
+  localQueue: any[];
+  draggedQueueIndex: number | null;
+  handleQueueDragStart: (i: number) => void;
+  handleQueueDragOver: (e: React.DragEvent, i: number) => void;
+  handleQueueDragEnd: () => void;
+  handleRemoveFromQueue: (id: number) => void;
+  handleAddToQueue: () => void;
+  isAddQueueOpen: boolean;
+  setIsAddQueueOpen: (v: boolean) => void;
+  selectedVehicleId: string;
+  setSelectedVehicleId: (v: string) => void;
+  availableVehicles: any[];
+  handlePlateChange: (task: Task, val: string) => void;
+  getPlateFromNotes: (notes: string | null | undefined) => string | null;
+  openEdit: (task: Task) => void;
+  tasksPending: boolean;
+}) {
+  const [activeTab, setActiveTab] = useState<MobileTab>("gelir");
+
+  const tabs: {
+    key: MobileTab;
+    label: string;
+    count: number;
+    color: string;
+  }[] = [
+    {
+      key: "gelir",
+      label: "Gelir",
+      count: leftRegular.length,
+      color: "text-blue-600",
+    },
+    {
+      key: "gider",
+      label: "Gider",
+      count: rightRegular.length,
+      color: "text-amber-600",
+    },
+    {
+      key: "ekstra",
+      label: "Ekstra",
+      count: leftExtras.length + rightExtras.length,
+      color: "text-emerald-600",
+    },
+    {
+      key: "teknik",
+      label: "Teknik",
+      count: technicalTasks.length,
+      color: "text-orange-600",
+    },
+    {
+      key: "sira",
+      label: "Sıra",
+      count: localQueue.length,
+      color: "text-purple-600",
+    },
+  ];
+
+  const activeTasks: ExtendedTask[] =
+    activeTab === "gelir"
+      ? leftRegular
+      : activeTab === "gider"
+        ? rightRegular
+        : activeTab === "ekstra"
+          ? [...leftExtras, ...rightExtras].sort(
+              (a, b) =>
+                new Date(a.scheduledTime).getTime() -
+                new Date(b.scheduledTime).getTime(),
+            )
+          : activeTab === "teknik"
+            ? technicalTasks
+            : [];
+
+  // ── Mobile task card ───────────────────────────────────────────────────
+  const TaskCard = ({
+    task,
+    tabKey,
+  }: {
+    task: ExtendedTask;
+    tabKey: MobileTab;
+  }) => {
+    const cancelled = task.status === "cancelled";
+    const isGelir = tabKey === "gelir";
+    const isGider = tabKey === "gider";
+    const isEkstra = tabKey === "ekstra";
+    const isTeknik = tabKey === "teknik";
+
+    const accentColor = isGelir
+      ? "border-l-blue-400"
+      : isGider
+        ? "border-l-amber-400"
+        : isEkstra
+          ? "border-l-emerald-400"
+          : "border-l-orange-400";
+
+    const timeColor = isGelir
+      ? "text-blue-600"
+      : isGider
+        ? "text-amber-600"
+        : isEkstra
+          ? "text-emerald-600"
+          : "text-orange-600";
+
+    const location =
+      isGider || isTeknik
+        ? task.dropoffLocation || task.pickupLocation
+        : task.pickupLocation;
+
+    return (
+      <div
+        className={`rounded-lg border border-l-4 ${accentColor} bg-card shadow-sm p-3 flex flex-col gap-2 ${
+          cancelled ? "opacity-60" : ""
+        }`}
+        onDoubleClick={() => openEdit(task)}
+      >
+        {/* Row 1: time + flight code + badge */}
+        <div className="flex items-center gap-2">
+          <span
+            className={`font-mono font-bold text-base ${timeColor} ${cancelled ? "line-through" : ""}`}
+          >
+            {utcTime(task.scheduledTime)}
+          </span>
+          {task.flightCode && (
+            <span
+              className={`font-mono text-xs font-semibold bg-muted px-1.5 py-0.5 rounded uppercase ${cancelled ? "line-through text-muted-foreground" : ""}`}
+            >
+              {task.flightCode}
+            </span>
+          )}
+          {cancelled && (
+            <Badge
+              variant="outline"
+              className="text-rose-600 border-rose-300 text-[10px] px-1 py-0 ml-auto"
+            >
+              İPTAL
+            </Badge>
+          )}
+        </div>
+
+        {/* Row 2: location */}
+        {location && (
+          <div
+            className={`text-sm font-medium truncate ${cancelled ? "line-through text-muted-foreground" : ""}`}
+          >
+            {location}
+          </div>
+        )}
+
+        {/* Row 3: crew / passenger count */}
+        {task.notes && !task.notes.startsWith("İPTAL") && (
+          <div className="text-xs text-muted-foreground truncate">
+            {task.notes.includes("CPT") || task.notes.includes("KBN")
+              ? task.notes.includes(" | Plaka:")
+                ? task.notes.split(" | Plaka:")[0]
+                : task.notes
+              : `${task.passengerCount ?? ""} kişi`}
+          </div>
+        )}
+
+        {/* Row 4: plate selector */}
+        <div className="mt-0.5">
+          <select
+            className={`w-full bg-muted/30 border rounded-md px-2 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer transition-all ${
+              cancelled ? "text-rose-700 opacity-80" : "text-primary"
+            }`}
+            value={
+              cancelled
+                ? "cancelled"
+                : (task.vehicleId ??
+                  (getPlateFromNotes(task.notes)
+                    ? `custom:${getPlateFromNotes(task.notes)}`
+                    : ""))
+            }
+            onChange={(e) => handlePlateChange(task, e.target.value)}
+          >
+            <option value="">Plaka Seçin...</option>
+            <option value="cancelled" className="text-red-600 font-bold">
+              İPTAL
+            </option>
+            <option value="custom_prompt" className="text-blue-600 font-bold">
+              ✍️ Özel Plaka Yaz...
+            </option>
+            {task.vehicleId === null && getPlateFromNotes(task.notes) && (
+              <option
+                value={`custom:${getPlateFromNotes(task.notes)}`}
+                className="font-bold text-blue-600"
+              >
+                {getPlateFromNotes(task.notes)}
+              </option>
+            )}
+            {vehicles.map((v: any) => (
+              <option key={v.id} value={v.id}>
+                {v.plate} — {v.driverName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3 md:hidden">
+      {/* Tab bar */}
+      <div className="flex bg-muted/50 rounded-lg p-1 gap-0.5 overflow-x-auto shrink-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 min-w-0 flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-md text-[10px] font-bold transition-all ${
+              activeTab === tab.key
+                ? "bg-background shadow-sm " + tab.color
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span className="text-base leading-none font-mono">
+              {tab.count}
+            </span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Task cards */}
+      {activeTab !== "sira" && (
+        <div className="flex flex-col gap-2">
+          {activeTasks.length === 0 ? (
+            <div className="text-center text-muted-foreground text-sm py-8">
+              Bu sekmede görev bulunmuyor.
+            </div>
+          ) : (
+            activeTasks.map((task) => (
+              <TaskCard key={task.id} task={task} tabKey={activeTab} />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Queue panel */}
+      {activeTab === "sira" && (
+        <div className="flex flex-col gap-2">
+          {localQueue.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Sırada araç yok.
+            </p>
+          )}
+          {localQueue.map((v: any, idx) => (
+            <div
+              key={v.id}
+              className={`rounded-lg border bg-card shadow-sm p-3 flex items-center gap-3 ${
+                draggedQueueIndex === idx ? "opacity-40" : ""
+              }`}
+            >
+              <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs shrink-0">
+                #{idx + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-mono font-bold text-sm">{v.plate}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {v.driverName || "—"}
+                </div>
+              </div>
+              <button
+                className="w-8 h-8 rounded hover:bg-rose-50 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
+                onClick={() => handleRemoveFromQueue(v.id)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+
+          {/* Add to queue */}
+          <div className="mt-1">
+            {isAddQueueOpen ? (
+              <div className="flex flex-col gap-2 p-3 border rounded-lg bg-muted/20">
+                <select
+                  className="w-full border rounded px-2 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  value={selectedVehicleId}
+                  onChange={(e) => setSelectedVehicleId(e.target.value)}
+                >
+                  <option value="">Araç seç...</option>
+                  {availableVehicles.map((v: any) => (
+                    <option key={v.id} value={v.id}>
+                      {v.plate} — {v.driverName}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    size="sm"
+                    onClick={handleAddToQueue}
+                    disabled={!selectedVehicleId}
+                  >
+                    Sıraya Ekle
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsAddQueueOpen(false);
+                      setSelectedVehicleId("");
+                    }}
+                  >
+                    İptal
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                size="sm"
+                onClick={() => setIsAddQueueOpen(true)}
+              >
+                <Plus className="w-4 h-4" /> Sıraya Araç Ekle
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
