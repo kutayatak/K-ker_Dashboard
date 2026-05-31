@@ -11,14 +11,60 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 // Try to extract Date (YYYY-MM-DD) from filename
 function extractDateFromFilename(name: string): string | null {
   const baseName = name.substring(0, name.lastIndexOf(".")) || name;
-  const ymdMatch = baseName.match(/\b(20\d{2})[-._](0[1-9]|1[0-2])[-._](0[1-9]|[12]\d|3[01])\b/);
-  if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
-  const dmyMatch = baseName.match(/\b(0[1-9]|[12]\d|3[01])[-._](0[1-9]|1[0-2])[-._](20\d{2})\b/);
-  if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
-  const ymdDigits = baseName.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
-  if (ymdDigits) return `${ymdDigits[1]}-${ymdDigits[2]}-${ymdDigits[3]}`;
-  const dmyDigits = baseName.match(/\b(0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(20\d{2})\b/);
-  if (dmyDigits) return `${dmyDigits[3]}-${dmyDigits[2]}-${dmyDigits[1]}`;
+  const clean = baseName.toLowerCase().trim();
+
+  // 1. Try to find Turkish month names (e.g. "30 mayıs 2026", "30 mayis 2026", "3 haziran 2026")
+  const turkishMonths = ["ocak", "şubat", "subat", "mart", "nisan", "mayıs", "mayis", "haziran", "temmuz", "ağustos", "agustos", "eylül", "eylul", "ekim", "kasım", "kasim", "aralık", "aralik"];
+  for (let i = 0; i < turkishMonths.length; i++) {
+    const month = turkishMonths[i];
+    const monthIdx = (i % 12) + 1; // Month number 1..12
+    const regex = new RegExp(`\\b([1-9]|0[1-9]|[12]\\d|3[01])\\s+${month}\\s+(20\\d{2}|\\d{2})\\b`, "i");
+    const match = clean.match(regex);
+    if (match) {
+      const d = String(match[1]).padStart(2, "0");
+      const m = String(monthIdx).padStart(2, "0");
+      let y = match[2];
+      if (y.length === 2) y = "20" + y;
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  // 2. Standard D.M.YYYY or D-M-YYYY or D_M_YYYY (e.g. "30.05.2026", "30.5.2026", "30-5-26", "3.5.26")
+  const dmyMatch = clean.match(/\b([1-9]|0[1-9]|[12]\\d|3[01])[-._]([1-9]|0[1-9]|1[0-2])[-._](20\d{2}|\d{2})\b/);
+  if (dmyMatch) {
+    const d = String(dmyMatch[1]).padStart(2, "0");
+    const m = String(dmyMatch[2]).padStart(2, "0");
+    let y = dmyMatch[3];
+    if (y.length === 2) y = "20" + y;
+    return `${y}-${m}-${d}`;
+  }
+
+  // 3. YYYY.MM.DD or YYYY-MM-DD (e.g. "2026.05.30", "2026-05-30")
+  const ymdMatch = clean.match(/\b(20\d{2})[-._]([1-9]|0[1-9]|1[0-2])[-._]([1-9]|0[1-9]|[12]\\d|3[01])\b/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = String(ymdMatch[2]).padStart(2, "0");
+    const d = String(ymdMatch[3]).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  // 4. Digits fallback (e.g. "30052026", "20260530")
+  const digitsMatch1 = clean.match(/\b([1-9]|0[1-9]|[12]\\d|3[01])(0[1-9]|1[0-2])(20\d{2})\b/);
+  if (digitsMatch1) {
+    const d = String(digitsMatch1[1]).padStart(2, "0");
+    const m = String(digitsMatch1[2]).padStart(2, "0");
+    const y = digitsMatch1[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  const digitsMatch2 = clean.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\b/);
+  if (digitsMatch2) {
+    const y = digitsMatch2[1];
+    const m = String(digitsMatch2[2]).padStart(2, "0");
+    const d = String(digitsMatch2[3]).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
   return null;
 }
 
