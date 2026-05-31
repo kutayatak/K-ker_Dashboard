@@ -33,6 +33,8 @@ import {
   PieChart,
   ArrowRightLeft,
   X,
+  Trash2,
+  ListChecks,
 } from "lucide-react";
 import {
   Dialog,
@@ -43,9 +45,25 @@ import {
 } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 // Read HH:mm from the UTC ISO string to avoid local-timezone (+3h) offset.
 const utcTime = (iso: string) => iso?.substring(11, 16) ?? "--:--";
+
+const formatDisplayPlate = (plate: string): string => {
+  const clean = plate.trim();
+  // If it starts with S or C followed immediately by digits (allowing spaces), e.g. S25393 or S 25393 -> S 25393
+  const match = clean.match(/^([SC])\s*(\d+)$/i);
+  if (match) {
+    return `${match[1].toUpperCase()} ${match[2]}`;
+  }
+  return clean.toUpperCase();
+};
+
+const normalizeForMap = (plate: string): string => {
+  return plate.replace(/[\s\-\.]/g, "").toUpperCase();
+};
 
 export function Reports() {
   const [activeTab, setActiveTab] = useState<
@@ -54,7 +72,10 @@ export function Reports() {
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [retypeTask, setRetypeTask] = useState<any | null>(null); // task pending retype confirm
-  const [plateToDelete, setPlateToDelete] = useState<string | null>(null);
+  const [platesToDelete, setPlatesToDelete] = useState<string[]>([]);
+  const [confirmCheckbox, setConfirmCheckbox] = useState(false);
+  const [cleanupMode, setCleanupMode] = useState(false);
+  const [selectedPlates, setSelectedPlates] = useState<string[]>([]);
   const [activeEsnafFilter, setActiveEsnafFilter] = useState<string | null>(null);
   const [excludedPlates, setExcludedPlates] = useState<string[]>(() => {
     try {
@@ -69,15 +90,29 @@ export function Reports() {
   const isLongPressRef = useRef(false);
 
   const handlePressStart = (plate: string) => {
+    if (cleanupMode) return;
     isLongPressRef.current = false;
     if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
     pressTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
-      setPlateToDelete(plate);
+      setPlatesToDelete([plate]);
+      setConfirmCheckbox(false);
     }, 700);
   };
 
+  const togglePlateSelection = (plate: string) => {
+    setSelectedPlates((prev) =>
+      prev.includes(plate)
+        ? prev.filter((p) => p !== plate)
+        : [...prev, plate]
+    );
+  };
+
   const handlePressEnd = (plate: string) => {
+    if (cleanupMode) {
+      togglePlateSelection(plate);
+      return;
+    }
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
@@ -87,12 +122,16 @@ export function Reports() {
     }
   };
 
-  const handleExcludePlate = (plate: string) => {
-    const updated = [...excludedPlates, plate];
+  const handleExcludePlates = (plates: string[]) => {
+    const updated = [...excludedPlates, ...plates];
     setExcludedPlates(updated);
     localStorage.setItem("excluded_esnaf_plates", JSON.stringify(updated));
-    setPlateToDelete(null);
-    if (activeEsnafFilter === plate) {
+    setPlatesToDelete([]);
+    setConfirmCheckbox(false);
+    setSelectedPlates([]);
+    
+    const normalizedPlatesToExclude = new Set(plates.map((p) => normalizeForMap(p)));
+    if (activeEsnafFilter && normalizedPlatesToExclude.has(normalizeForMap(activeEsnafFilter))) {
       setActiveEsnafFilter(null);
     }
   };
@@ -282,20 +321,6 @@ export function Reports() {
       tasks.map((t) => t.scheduledTime.substring(0, 7)), // UTC month "YYYY-MM"
     ),
   ).sort((a, b) => b.localeCompare(a));
-
-  const formatDisplayPlate = (plate: string): string => {
-    const clean = plate.trim();
-    // If it starts with S or C followed immediately by digits (allowing spaces), e.g. S25393 or S 25393 -> S 25393
-    const match = clean.match(/^([SC])\s*(\d+)$/i);
-    if (match) {
-      return `${match[1].toUpperCase()} ${match[2]}`;
-    }
-    return clean.toUpperCase();
-  };
-
-  const normalizeForMap = (plate: string): string => {
-    return plate.replace(/[\s\-\.]/g, "").toUpperCase();
-  };
 
   const isEsnafTask = (t: any) => {
     if (t.type === "technical") return false;
@@ -958,11 +983,11 @@ export function Reports() {
         </div>
       ) : activeTab === "accounting" ? (
         <>
-          {/* ── Excluded Plates & Filter resets ── */}
-          {(excludedPlates.length > 0 || activeEsnafFilter) && (
-            <div className="flex flex-wrap gap-2 items-center text-xs bg-muted/30 p-2.5 rounded-lg border select-none shrink-0 mb-1">
+          {/* ── Excluded Plates & Filter resets & Cleanup Mode ── */}
+          <div className="flex flex-wrap gap-2 items-center justify-between text-xs bg-muted/30 p-2.5 rounded-lg border select-none shrink-0 mb-1">
+            <div className="flex flex-wrap gap-2 items-center">
               <span className="font-semibold text-muted-foreground">Aktif Görünüm:</span>
-              {activeEsnafFilter && (
+              {activeEsnafFilter ? (
                 <Badge variant="secondary" className="flex items-center gap-1.5 font-bold bg-primary/10 text-primary hover:bg-primary/15 border-none">
                   {formatDisplayPlate(activeEsnafFilter)} Gösteriliyor
                   <button
@@ -973,6 +998,8 @@ export function Reports() {
                     ✕
                   </button>
                 </Badge>
+              ) : (
+                <span className="text-muted-foreground italic font-normal text-[11px]">Tüm Esnaflar Listeleniyor</span>
               )}
               {excludedPlates.length > 0 && (
                 <Button
@@ -985,7 +1012,41 @@ export function Reports() {
                 </Button>
               )}
             </div>
-          )}
+
+            <div className="flex gap-2">
+              <Button
+                variant={cleanupMode ? "default" : "outline"}
+                size="sm"
+                className={`h-7 px-3 text-xs font-semibold ${
+                  cleanupMode
+                    ? "bg-red-600 hover:bg-red-700 text-white border-none"
+                    : "border-slate-200"
+                }`}
+                onClick={() => {
+                  setCleanupMode(!cleanupMode);
+                  setSelectedPlates([]);
+                }}
+              >
+                <ListChecks className="w-3.5 h-3.5 mr-1" />
+                {cleanupMode ? "Temizliği Kapat" : "Araç Temizleme Modu"}
+              </Button>
+
+              {cleanupMode && selectedPlates.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-7 px-3 text-xs font-bold bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                  onClick={() => {
+                    setPlatesToDelete(selectedPlates);
+                    setConfirmCheckbox(false);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                  Seçilenleri Gizle ({selectedPlates.length})
+                </Button>
+              )}
+            </div>
+          </div>
 
           {/* ── Esnaf Sefer Listesi Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none">
@@ -1002,13 +1063,29 @@ export function Reports() {
                 }}
                 onTouchStart={() => handlePressStart(s.vehicleName)}
                 onTouchEnd={() => handlePressEnd(s.vehicleName)}
-                className={`border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer active:scale-95 touch-none ${
+                className={`relative border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer active:scale-95 touch-none ${
                   activeEsnafFilter === s.vehicleName
                     ? "ring-2 ring-primary bg-primary/5 border-primary/20"
                     : ""
+                } ${
+                  cleanupMode && selectedPlates.includes(s.vehicleName)
+                    ? "ring-2 ring-red-500 bg-red-500/5 border-red-500/20"
+                    : ""
                 }`}
-                title="Detaylı liste için tek tık, gizlemek için uzun basın"
+                title={
+                  cleanupMode
+                    ? "Seçmek/Seçimi kaldırmak için tıklayın"
+                    : "Detaylı liste için tek tık, gizlemek için uzun basın"
+                }
               >
+                {cleanupMode && (
+                  <div className="absolute top-2.5 right-2.5 pointer-events-none">
+                    <Checkbox
+                      checked={selectedPlates.includes(s.vehicleName)}
+                      className="border-red-500 data-[state=checked]:bg-red-500 data-[state=checked]:text-white h-4 w-4"
+                    />
+                  </div>
+                )}
                 <CardContent className="p-4 flex flex-col justify-between h-full">
                   <div>
                     <div
@@ -1356,33 +1433,82 @@ export function Reports() {
       </Dialog>
 
       {/* ── Plate Hide/Exclude Confirm Dialog ────────────────────────────── */}
-      <Dialog open={!!plateToDelete} onOpenChange={(open) => { if (!open) setPlateToDelete(null); }}>
+      <Dialog
+        open={platesToDelete.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPlatesToDelete([]);
+          } else {
+            setConfirmCheckbox(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md bg-card">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <X className="w-4 h-4 text-red-600" />
-              Plakayı Görünümden Gizle
+              {platesToDelete.length === 1 ? "Plakayı Görünümden Gizle" : "Plakaları Görünümden Gizle"}
             </DialogTitle>
           </DialogHeader>
-          {plateToDelete && (
-            <div className="py-2 space-y-3">
+          {platesToDelete.length > 0 && (
+            <div className="py-2 space-y-4">
               <p className="text-sm text-muted-foreground">
-                <span className="font-bold text-foreground">{formatDisplayPlate(plateToDelete)}</span> plakalı araç Esnaf Sefer Listesi'nden tamamen gizlenecektir.
+                {platesToDelete.length === 1 ? (
+                  <>
+                    <span className="font-bold text-foreground">
+                      {formatDisplayPlate(platesToDelete[0])}
+                    </span>{" "}
+                    plakalı araç Esnaf Sefer Listesi'nden tamamen gizlenecektir.
+                  </>
+                ) : (
+                  <>
+                    Seçilen <span className="font-bold text-foreground">{platesToDelete.length} adet araç</span> Esnaf Sefer Listesi'nden tamamen gizlenecektir.
+                  </>
+                )}
               </p>
+
+              {platesToDelete.length > 1 && (
+                <div className="max-h-24 overflow-y-auto border rounded bg-slate-50 dark:bg-slate-900/50 p-2 flex flex-wrap gap-1.5 scrollbar-thin">
+                  {platesToDelete.map((p) => (
+                    <Badge key={p} variant="outline" className="font-mono font-bold bg-white dark:bg-slate-800 text-[10px]">
+                      {formatDisplayPlate(p)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
               <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded p-2 font-semibold">
                 ⚠️ Vardiya araçlarını veya istemediğiniz diğer esnaf gruplarını bu şekilde temizleyebilirsiniz. Gizlenen plakaları dilediğiniz zaman üstteki buton ile geri getirebilirsiniz.
               </p>
+
+              <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Checkbox
+                  id="confirm-hide-checkbox"
+                  checked={confirmCheckbox}
+                  onCheckedChange={(checked) => setConfirmCheckbox(!!checked)}
+                />
+                <Label
+                  htmlFor="confirm-hide-checkbox"
+                  className="text-xs font-semibold text-foreground cursor-pointer select-none leading-none"
+                >
+                  {platesToDelete.length === 1
+                    ? "Bu plakayı listeden gizlemek istediğimi onaylıyorum"
+                    : "Bu plakaları listeden gizlemek istediğimi onaylıyorum"
+                  }
+                </Label>
+              </div>
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPlateToDelete(null)}>
+            <Button variant="outline" onClick={() => setPlatesToDelete([])}>
               Vazgeç
             </Button>
             <Button
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50"
+              disabled={!confirmCheckbox}
               onClick={() => {
-                if (plateToDelete) {
-                  handleExcludePlate(plateToDelete);
+                if (platesToDelete.length > 0 && confirmCheckbox) {
+                  handleExcludePlates(platesToDelete);
                 }
               }}
             >
