@@ -550,8 +550,8 @@ export function ExcelView() {
                     {leftTask ? (
                       <>
                         <td className={`p-1.5 text-center font-bold ${leftCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}>{idx + 1}</td>
-                        <td className={`p-1.5 font-bold uppercase truncate max-w-[80px] ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.flightCode ?? ""}>
-                          {leftTask.flightCode || "-"}
+                        <td className={`p-1.5 font-bold uppercase ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.flightCode ?? ""}>
+                          <div className="truncate w-full block whitespace-nowrap">{leftTask.flightCode || "-"}</div>
                         </td>
                         <td className={`p-1 ${leftCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
@@ -577,13 +577,15 @@ export function ExcelView() {
                         <td className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${leftCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}>
                           {format(new Date(leftTask.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[180px] ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.pickupLocation}>
-                          {leftTask.pickupLocation}
+                        <td className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.pickupLocation}>
+                          <div className="truncate w-full block whitespace-nowrap">{leftTask.pickupLocation}</div>
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[100px] ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={leftTask.notes ?? ""}>
-                          {leftTask.notes && (leftTask.notes.includes("CPT") || leftTask.notes.includes("KBN") || leftTask.notes.toLowerCase().includes("cpt") || leftTask.notes.toLowerCase().includes("kbn"))
-                            ? (leftTask.notes.includes(" | Plaka:") ? leftTask.notes.split(" | Plaka:")[0] : leftTask.notes)
-                            : `${leftTask.passengerCount} kişi`}
+                        <td className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={leftTask.notes ?? ""}>
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {leftTask.notes && (leftTask.notes.includes("CPT") || leftTask.notes.includes("KBN") || leftTask.notes.toLowerCase().includes("cpt") || leftTask.notes.toLowerCase().includes("kbn"))
+                              ? (leftTask.notes.includes(" | Plaka:") ? leftTask.notes.split(" | Plaka:")[0] : leftTask.notes)
+                              : `${leftTask.passengerCount} kişi`}
+                          </div>
                         </td>
                         <td className={`p-1 ${leftCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}>
                           <input
@@ -615,8 +617,8 @@ export function ExcelView() {
                     {/* Right (Gider) Task Cells */}
                     {rightTask ? (
                       <>
-                        <td className={`p-1.5 font-bold uppercase truncate max-w-[80px] ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.flightCode ?? ""}>
-                          {rightTask.flightCode || "-"}
+                        <td className={`p-1.5 font-bold uppercase ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.flightCode ?? ""}>
+                          <div className="truncate w-full block whitespace-nowrap">{rightTask.flightCode || "-"}</div>
                         </td>
                         <td className={`p-1 ${rightCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
@@ -642,13 +644,15 @@ export function ExcelView() {
                         <td className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rightCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}>
                           {format(new Date(rightTask.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[180px] ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.dropoffLocation}>
-                          {rightTask.dropoffLocation}
+                        <td className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.dropoffLocation}>
+                          <div className="truncate w-full block whitespace-nowrap">{rightTask.dropoffLocation}</div>
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[100px] ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={rightTask.notes ?? ""}>
-                          {rightTask.notes && (rightTask.notes.includes("CPT") || rightTask.notes.includes("KBN") || rightTask.notes.toLowerCase().includes("cpt") || rightTask.notes.toLowerCase().includes("kbn"))
-                            ? (rightTask.notes.includes(" | Plaka:") ? rightTask.notes.split(" | Plaka:")[0] : rightTask.notes)
-                            : `${rightTask.passengerCount} kişi`}
+                        <td className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={rightTask.notes ?? ""}>
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {rightTask.notes && (rightTask.notes.includes("CPT") || rightTask.notes.includes("KBN") || rightTask.notes.toLowerCase().includes("cpt") || rightTask.notes.toLowerCase().includes("kbn"))
+                              ? (rightTask.notes.includes(" | Plaka:") ? rightTask.notes.split(" | Plaka:")[0] : rightTask.notes)
+                              : `${rightTask.passengerCount} kişi`}
+                          </div>
                         </td>
                         <td className={`p-1 ${rightCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}>
                           <input
@@ -809,8 +813,8 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[280px] ${leftExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftExtra.pickupLocation}>
-                          {leftExtra.pickupLocation}
+                        <td className={`p-1.5 font-medium ${leftExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftExtra.pickupLocation}>
+                          <div className="truncate w-full block whitespace-nowrap">{leftExtra.pickupLocation}</div>
                         </td>
                       </>
                     ) : (
@@ -850,8 +854,8 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 font-medium truncate max-w-[280px] ${rightExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`} title={rightExtra.pickupLocation}>
-                          {rightExtra.pickupLocation}
+                        <td className={`p-1.5 font-medium ${rightExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`} title={rightExtra.pickupLocation}>
+                          <div className="truncate w-full block whitespace-nowrap">{rightExtra.pickupLocation}</div>
                         </td>
                       </>
                     ) : (

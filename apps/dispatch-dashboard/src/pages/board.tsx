@@ -180,7 +180,12 @@ export function Board() {
         if (!t?.scheduledTime) continue;
         const d = new Date(t.scheduledTime);
         if (isNaN(d.getTime())) continue;
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const hours = d.getHours();
+        const shiftDate = new Date(d);
+        if (hours < 6) {
+          shiftDate.setDate(shiftDate.getDate() - 1);
+        }
+        const key = `${shiftDate.getFullYear()}-${String(shiftDate.getMonth() + 1).padStart(2, "0")}-${String(shiftDate.getDate()).padStart(2, "0")}`;
         const prev = byDate.get(key);
         const isActive = t.status !== "completed" && t.status !== "cancelled";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });

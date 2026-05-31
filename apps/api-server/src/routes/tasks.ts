@@ -172,7 +172,23 @@ router.post("/import", async (req, res) => {
   let skipped = 0;
 
   // Execute all inserts/updates in a single transaction for maximum speed
+  // Execute all inserts/updates in a single transaction for maximum speed
   await db.transaction(async (tx: any) => {
+    if (excelDate) {
+      const shiftStart = new Date(excelDate);
+      shiftStart.setHours(6, 0, 0, 0);
+      const shiftEnd = new Date(shiftStart);
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+      await tx
+        .delete(tasksTable)
+        .where(
+          and(
+            sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
+          )
+        );
+    }
+
     for (const t of tasks) {
       try {
         let vehicleId: number | null = null;
@@ -250,42 +266,15 @@ router.post("/import", async (req, res) => {
           vehicleId: isImportCancelled ? null : vehicleId,
         };
 
-        if (t.importKey) {
-          const existing = existingTasksMap.get(t.importKey);
-
-          if (existing) {
-            // Don't override assigned vehicles or completed tasks unless new import is explicitly cancelled
-            const keepVehicle = existing.vehicleId != null && !isImportCancelled;
-            const keepStatus = (existing.status === "assigned" || existing.status === "completed") && !isImportCancelled;
-            const finalStatus = isImportCancelled ? "cancelled" : (keepStatus ? existing.status : status);
-
-            const [task] = await tx
-              .update(tasksTable)
-              .set({
-                ...values,
-                vehicleId: keepVehicle ? existing.vehicleId : (isImportCancelled ? null : vehicleId),
-                status: finalStatus,
-              })
-              .where(eq(tasksTable.id, existing.id))
-              .returning();
-            created.push(enrichTaskInMemory(task));
-            updated++;
-          } else {
-            const [task] = await tx.insert(tasksTable).values(values).returning();
-            created.push(enrichTaskInMemory(task));
-          }
-        } else {
-          // No importKey — plain insert
-          const [task] = await tx.insert(tasksTable).values(values).returning();
-          created.push(enrichTaskInMemory(task));
-        }
+        const [task] = await tx.insert(tasksTable).values(values).returning();
+        created.push(enrichTaskInMemory(task));
       } catch {
         skipped++;
       }
     }
   });
 
-  return res.json({ created: created.length - updated, updated, skipped, tasks: created });
+  return res.json({ created: created.length, updated: 0, skipped, tasks: created });
 });
 
 
