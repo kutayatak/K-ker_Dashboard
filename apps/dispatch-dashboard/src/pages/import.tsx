@@ -406,6 +406,8 @@ export function ImportTasks() {
           if (tasks.length === 0) {
             setParseError("Dosyada işlenebilir görev bulunamadı. Sütun başlıklarını kontrol edin.");
           }
+          console.log("excel import: parsed targetDate:", targetDate);
+          console.log("excel import: parsed tasks:", tasks);
           setParsedTasks(tasks);
         } else {
           // Parse vehicles (first 15 Crew vehicles + Esnaf/outsource vehicles + VARDIYA + MEMUR)
@@ -583,6 +585,9 @@ export function ImportTasks() {
 
   const handleConfirmTasks = () => {
     if (parsedTasks.length === 0) return;
+
+    console.log("excel import: confirming tasks. excelDate (shiftDate):", shiftDate);
+    console.log("excel import: tasks payload:", parsedTasks);
 
     importMutation.mutate(
       { 

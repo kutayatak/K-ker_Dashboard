@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, excelFilesTable, tasksTable, vehiclesTable } from "@workspace/db";
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, and } from "drizzle-orm";
 import ExcelJS from "exceljs";
 
 const router = Router();
@@ -171,10 +171,46 @@ router.get("/files", async (req, res) => {
 });
 
 // DELETE /excel/files/:id
-// Deletes a stored Excel file by ID
+// Deletes a stored Excel file by ID and its corresponding tasks
 router.delete("/files/:id", async (req, res) => {
   const id = Number(req.params.id);
-  await db.delete(excelFilesTable).where(eq(excelFilesTable.id, id));
+  
+  await db.transaction(async (tx) => {
+    // 1. Fetch file record
+    const [file] = await tx.select().from(excelFilesTable).where(eq(excelFilesTable.id, id));
+    if (file) {
+      const shiftDateStr = file.date;
+      let y, m, d;
+      if (shiftDateStr.includes("-")) {
+        const parts = shiftDateStr.split("-").map(Number);
+        y = parts[0];
+        m = parts[1];
+        d = parts[2];
+      } else if (shiftDateStr.length === 6) {
+        d = Number(shiftDateStr.slice(0, 2));
+        m = Number(shiftDateStr.slice(2, 4));
+        y = Number("20" + shiftDateStr.slice(4, 6));
+      }
+
+      if (y && m && d) {
+        const shiftStart = new Date(Date.UTC(y, m - 1, d, 6, 0, 0, 0));
+        const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
+
+        // 2. Delete tasks for that shift date
+        await tx
+          .delete(tasksTable)
+          .where(
+            and(
+              sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
+            )
+          );
+      }
+    }
+
+    // 3. Delete the file record
+    await tx.delete(excelFilesTable).where(eq(excelFilesTable.id, id));
+  });
+
   return res.status(204).send();
 });
 
