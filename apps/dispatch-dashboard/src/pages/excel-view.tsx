@@ -88,26 +88,33 @@ export function ExcelView() {
     return match ? match[1].trim() : null;
   };
 
-  // Group tasks by table type and sort them by rowIndex
-  const sortTasksByRowIndex = (a: ExtendedTask, b: ExtendedTask) => (a.rowIndex ?? 9999) - (b.rowIndex ?? 9999);
+  // Group tasks by table type and sort them chronologically by scheduled time
+  const sortTasks = (a: ExtendedTask, b: ExtendedTask) => {
+    const timeA = new Date(a.scheduledTime).getTime();
+    const timeB = new Date(b.scheduledTime).getTime();
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+    return (a.rowIndex ?? 9999) - (b.rowIndex ?? 9999);
+  };
 
   // Main Regular Tables (left vs right)
   const leftRegular = dayTasks
     .filter((t) => t.tableType === "left" && t.type !== "extra")
-    .sort(sortTasksByRowIndex);
+    .sort(sortTasks);
 
   const rightRegular = dayTasks
     .filter((t) => t.tableType === "right" && t.type !== "extra")
-    .sort(sortTasksByRowIndex);
+    .sort(sortTasks);
 
   // Extras Tables (left vs right)
   const leftExtras = dayTasks
     .filter((t) => t.tableType === "left" && t.type === "extra")
-    .sort(sortTasksByRowIndex);
+    .sort(sortTasks);
 
   const rightExtras = dayTasks
     .filter((t) => t.tableType === "right" && t.type === "extra")
-    .sort(sortTasksByRowIndex);
+    .sort(sortTasks);
 
   // Maximum row counts for side-by-side alignment
   const maxRegularRows = Math.max(leftRegular.length, rightRegular.length);
