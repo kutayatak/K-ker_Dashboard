@@ -506,58 +506,76 @@ export function ImportTasks() {
             const row = rows[i];
             if (!row || row.every((c) => c == null || c === "")) continue;
 
-            // Check if we hit the Ekstra section header in a robust way
-            const rowText = row
-              .map((c) => String(c || ""))
-              .join(" ")
-              .toLowerCase();
-            if (
-              rowText.includes("ekstra") ||
-              rowText.includes("ekstralar") ||
-              rowText.includes("ekst.")
-            ) {
-              if (currentSection !== "ekstra") {
+            // ── Determine column A type ──────────────────────────────────────
+            // Must do this FIRST. Section-header text detection must only run on
+            // non-data rows. If a data row's hotel name or notes contain "ekstra",
+            // the old code would prematurely switch sections — now it can't.
+            const colAVal = row[0];
+            const colAStr = colAVal != null ? String(colAVal).trim() : "";
+            // A valid data row always has a positive integer in column A (S.NO).
+            const colAIsNumeric =
+              colAStr !== "" && !isNaN(Number(colAStr)) && Number(colAStr) >= 1;
+
+            // ── Non-data row: section-header detection ───────────────────────
+            if (!colAIsNumeric) {
+              // Only examine header/separator rows for section keywords.
+              // Using column-A text first (most reliable), then full row text.
+              const colALower = colAStr.toLowerCase();
+              const rowText = row
+                .map((c) => String(c || ""))
+                .join(" ")
+                .toLowerCase();
+
+              const isEkstraHeader =
+                colALower.includes("ekstra") ||
+                colALower.includes("ekst.") ||
+                // Fallback: "EKSTRALAR" could be in another column on a header row
+                (rowText.includes("ekstra") &&
+                  // Confirm it's really a header: no valid regular-section columns
+                  !isValidValue(row[1]) &&
+                  !isValidValue(row[4]));
+
+              if (isEkstraHeader && currentSection !== "ekstra") {
                 currentSection = "ekstra";
-                // CRITICAL: Reset time counters so ekstra times don't compare
-                // against regular-section times and falsely trigger dateOffset.
                 lastTimeMinutesLeft = -1;
                 dateOffsetLeft = 0;
                 lastTimeMinutesRight = -1;
                 dateOffsetRight = 0;
+                console.log(`excel import: section → ekstra (header row ${i})`);
               }
+              // All non-data rows (headers, separators, totals) are skipped.
               continue;
             }
 
-            const colA = row[0];
-            if (colA == null) continue;
-
-            const colAStr = String(colA).trim();
-
+            // ── Data row: S.NO=1 ekstra heuristic ───────────────────────────
+            // Detects the first data row of the ekstra section when there is no
+            // explicit "EKSTRALAR" header row. Requires ALL THREE conditions so
+            // that a regular row missing just one field doesn't false-trigger.
             if (colAStr === "1" && i > 10 && currentSection === "regular") {
-              // Heuristic 1 (original): column F (crew) is empty
-              const noCrewInColF =
-                row[5] == null ||
-                String(row[5]).trim() === "" ||
-                String(row[5]).trim() === "System.Xml.XmlElement";
+              const noCrewInColF = !isValidValue(row[5]);
+              const noFlightInColB = !isValidValue(row[1]);
+              const noHotelInColE = !isValidValue(row[4]);
+              const hasDescInColD = isValidValue(row[3]);
 
-              // Heuristic 2 (new): column E (hotel in regular layout = index 4)
-              // is empty, but column D (description in ekstra layout = index 3) has
-              // a value — this precisely matches the ekstra column structure.
-              const noHotelInRegularPos = !isValidValue(row[4]);
-              const hasDescInEkstraPos = isValidValue(row[3]);
-
-              if (noCrewInColF || (noHotelInRegularPos && hasDescInEkstraPos)) {
+              // In the ekstra layout: B=time, C=plate, D=description, E=empty
+              // In the regular layout: B=flight, C=plate, D=time, E=hotel, F=crew
+              // So ekstra rows uniquely have: no flight (B), no hotel (E), has desc (D)
+              if (
+                noFlightInColB &&
+                noHotelInColE &&
+                hasDescInColD &&
+                noCrewInColF
+              ) {
                 currentSection = "ekstra";
-                // CRITICAL: Reset time counters so ekstra times don't compare
-                // against regular-section times and falsely trigger dateOffset.
                 lastTimeMinutesLeft = -1;
                 dateOffsetLeft = 0;
                 lastTimeMinutesRight = -1;
                 dateOffsetRight = 0;
+                console.log(
+                  `excel import: section → ekstra (S.NO=1 heuristic row ${i})`,
+                );
               }
             }
-
-            if (isNaN(Number(colAStr))) continue;
 
             if (currentSection === "regular") {
               const timeMinutesLeft = getTimeMinutes(row[3]);
