@@ -4,6 +4,8 @@ import {
   useListTasks,
   useListVehicles,
   useUpdateTask,
+  useUpdateVehicle,
+  useGetVehicleQueue,
   getListTasksQueryKey,
   type Task,
 } from "@workspace/api-client-react";
@@ -14,11 +16,14 @@ import {
   FileSpreadsheet,
   Download,
   RefreshCw,
-  Plus,
-  Users,
-  Clock,
-  Plane,
   Calendar as CalendarIcon,
+  GripVertical,
+  Plus,
+  X,
+  Wrench,
+  Users,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -67,6 +72,14 @@ const DEFAULT_EXTRA_WIDTHS = [
   320, // OTEL / AÇIKLAMA
 ];
 
+const DEFAULT_TECHNICAL_WIDTHS = [
+  48, // S.NO
+  64, // SAAT
+  160, // PLAKA (SÜRÜCÜ)
+  320, // AÇIKLAMA
+  80, // KM
+];
+
 export function ExcelView() {
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<string>(() => {
@@ -87,20 +100,17 @@ export function ExcelView() {
       }
     };
     handleUrlChange();
-
-    // Listen for url changes or popstate events
     window.addEventListener("popstate", handleUrlChange);
     return () => window.removeEventListener("popstate", handleUrlChange);
   }, [window.location.search]);
 
+  // ── Column width persistence ────────────────────────────────────────────
   const [regularWidths, setRegularWidths] = useState<number[]>(() => {
     try {
       const saved = localStorage.getItem("excel_view_regular_widths");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length === 14) {
-          return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length === 14) return parsed;
       }
     } catch (e) {
       console.error(e);
@@ -113,9 +123,7 @@ export function ExcelView() {
       const saved = localStorage.getItem("excel_view_extra_widths");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length === 8) {
-          return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length === 8) return parsed;
       }
     } catch (e) {
       console.error(e);
@@ -123,15 +131,32 @@ export function ExcelView() {
     return DEFAULT_EXTRA_WIDTHS;
   });
 
+  const [technicalWidths, setTechnicalWidths] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem("excel_view_technical_widths");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 5) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_TECHNICAL_WIDTHS;
+  });
+
   const startResize = (
-    tableType: "regular" | "extra",
+    tableType: "regular" | "extra" | "technical",
     colIndex: number,
     startEvent: React.MouseEvent,
   ) => {
     startEvent.preventDefault();
     const startX = startEvent.clientX;
     const startWidths =
-      tableType === "regular" ? [...regularWidths] : [...extraWidths];
+      tableType === "regular"
+        ? [...regularWidths]
+        : tableType === "extra"
+          ? [...extraWidths]
+          : [...technicalWidths];
     const startWidth = startWidths[colIndex];
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -143,8 +168,14 @@ export function ExcelView() {
           next[colIndex] = newWidth;
           return next;
         });
-      } else {
+      } else if (tableType === "extra") {
         setExtraWidths((prev) => {
+          const next = [...prev];
+          next[colIndex] = newWidth;
+          return next;
+        });
+      } else {
+        setTechnicalWidths((prev) => {
           const next = [...prev];
           next[colIndex] = newWidth;
           return next;
@@ -155,7 +186,6 @@ export function ExcelView() {
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-
       if (tableType === "regular") {
         setRegularWidths((latest) => {
           localStorage.setItem(
@@ -164,10 +194,18 @@ export function ExcelView() {
           );
           return latest;
         });
-      } else {
+      } else if (tableType === "extra") {
         setExtraWidths((latest) => {
           localStorage.setItem(
             "excel_view_extra_widths",
+            JSON.stringify(latest),
+          );
+          return latest;
+        });
+      } else {
+        setTechnicalWidths((latest) => {
+          localStorage.setItem(
+            "excel_view_technical_widths",
             JSON.stringify(latest),
           );
           return latest;
@@ -179,7 +217,7 @@ export function ExcelView() {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  // Fetch tasks and vehicles
+  // ── Data fetching ───────────────────────────────────────────────────────
   const { data: tasks = [], isPending: tasksPending } = useListTasks(
     {},
     { query: { queryKey: getListTasksQueryKey() } },
@@ -188,9 +226,136 @@ export function ExcelView() {
     {},
     { query: { queryKey: ["/api/vehicles"] } },
   );
+  const { data: queue = [] } = useGetVehicleQueue({
+    query: { queryKey: ["/api/vehicles/queue"] },
+  });
 
   const updateTaskMutation = useUpdateTask();
+  const updateVehicleMutation = useUpdateVehicle();
 
+  // ── Queue state & drag-and-drop (reorder within queue) ─────────────────
+  const [localQueue, setLocalQueue] = useState<any[]>([]);
+  const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(
+    null,
+  );
+  const [isAddQueueOpen, setIsAddQueueOpen] = useState(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [queueCollapsed, setQueueCollapsed] = useState(false);
+
+  useEffect(() => {
+    setLocalQueue(queue);
+  }, [queue]);
+
+  const handleQueueDragStart = (index: number) => {
+    setDraggedQueueIndex(index);
+  };
+
+  const handleQueueDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedQueueIndex === null || draggedQueueIndex === index) return;
+    const items = [...localQueue];
+    const dragged = items[draggedQueueIndex];
+    items.splice(draggedQueueIndex, 1);
+    items.splice(index, 0, dragged);
+    setDraggedQueueIndex(index);
+    setLocalQueue(items);
+  };
+
+  const handleQueueDragEnd = async () => {
+    setDraggedQueueIndex(null);
+    const ids = localQueue.map((v) => v.id);
+    try {
+      const res = await fetch("/api/vehicles/queue/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+      }
+    } catch (err) {
+      console.error("Queue reorder failed:", err);
+    }
+  };
+
+  const handleRemoveFromQueue = (vehicleId: number) => {
+    updateVehicleMutation.mutate(
+      { id: vehicleId, data: { status: "offline", queuePosition: null } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+        },
+      },
+    );
+  };
+
+  const handleAddToQueue = () => {
+    if (!selectedVehicleId) return;
+    const vId = Number(selectedVehicleId);
+    const maxPos = queue.reduce(
+      (max: number, v: any) => Math.max(max, v.queuePosition ?? 0),
+      0,
+    );
+    updateVehicleMutation.mutate(
+      { id: vId, data: { status: "empty", queuePosition: maxPos + 1 } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+          setIsAddQueueOpen(false);
+          setSelectedVehicleId("");
+        },
+      },
+    );
+  };
+
+  const availableVehicles = (vehicles as any[]).filter(
+    (v) => v.type === "fixed" && (!v.queuePosition || v.status !== "empty"),
+  );
+
+  // ── Drag vehicle-to-task assignment ────────────────────────────────────
+  // Drag a vehicle card from the queue and drop onto a task row's plate cell.
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null);
+
+  const handleVehicleDragStart = (e: React.DragEvent, vehicleId: number) => {
+    e.dataTransfer.setData("text/vehicle-id", String(vehicleId));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const handleTaskDrop = (e: React.DragEvent, task: Task) => {
+    e.preventDefault();
+    const vehicleId = e.dataTransfer.getData("text/vehicle-id");
+    if (!vehicleId) return;
+    const vId = Number(vehicleId);
+    const selectedVehicle = (vehicles as any[]).find((v) => v.id === vId);
+    if (!selectedVehicle) return;
+
+    let newNotes = task.notes ?? "";
+    const cleanNotes = newNotes.includes(" | Plaka:")
+      ? newNotes.split(" | Plaka:")[0]
+      : newNotes.includes(" | İPTAL")
+        ? newNotes.split(" | İPTAL")[0]
+        : newNotes === "İPTAL"
+          ? ""
+          : newNotes;
+    const finalNotes = cleanNotes
+      ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
+      : `Plaka: ${selectedVehicle.plate}`;
+
+    updateTaskMutation.mutate(
+      {
+        id: task.id,
+        data: { vehicleId: vId, notes: finalNotes, status: "draft" },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          setDragOverTaskId(null);
+        },
+      },
+    );
+  };
+
+  // ── Calendar helpers ────────────────────────────────────────────────────
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
     const yyyy = date.getFullYear();
@@ -199,14 +364,12 @@ export function ExcelView() {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  // Helper to get shift date key — shifts start at midnight so we use raw UTC date.
   const getShiftDateKey = (scheduledTime: string) => {
     const d = new Date(scheduledTime);
     if (isNaN(d.getTime())) return "";
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   };
 
-  // Pre-compute calendar day status
   const { completedDays, uncompletedDays } = useMemo(() => {
     const byDate = new Map<string, { hasActive: boolean }>();
     if (Array.isArray(tasks)) {
@@ -215,8 +378,6 @@ export function ExcelView() {
         const key = getShiftDateKey(t.scheduledTime);
         if (!key) continue;
         const prev = byDate.get(key);
-        // Technical tasks are completed by default as they have no vehicle/plate.
-        // Other tasks are active if they are not completed and not cancelled.
         const isActive =
           t.status !== "completed" &&
           t.status !== "cancelled" &&
@@ -240,10 +401,7 @@ export function ExcelView() {
     uncompleted: uncompletedDays,
   };
 
-  // Filter tasks within the shift window: midnight of selected day → midnight of next day.
-  // Both boundaries are at midnight for a clean 24-hour calendar day.
-  // Late-night tasks that cross midnight receive dateOffset=1 during import and
-  // naturally belong to the next calendar day.
+  // ── Task filtering ──────────────────────────────────────────────────────
   const [y, m, ddVal] = selectedDate.split("-").map(Number);
   const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 0, 0, 0, 0));
   const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 0, 0, 0, 0));
@@ -253,46 +411,45 @@ export function ExcelView() {
     return time >= shiftStart && time < shiftEnd;
   });
 
-  // Extract plate from notes as a fallback if vehicleName is not set
   const getPlateFromNotes = (notes: string | null | undefined) => {
     if (!notes) return null;
     const match = notes.match(/Plaka:\s*([^|]+)/i);
     return match ? match[1].trim() : null;
   };
 
-  // Group tasks by table type and sort them chronologically by scheduled time
   const sortTasks = (a: ExtendedTask, b: ExtendedTask) => {
     const timeA = new Date(a.scheduledTime).getTime();
     const timeB = new Date(b.scheduledTime).getTime();
-    if (timeA !== timeB) {
-      return timeA - timeB;
-    }
+    if (timeA !== timeB) return timeA - timeB;
     return (a.rowIndex ?? 9999) - (b.rowIndex ?? 9999);
   };
 
-  // Main Regular Tables (left vs right)
   const leftRegular = dayTasks
-    .filter((t) => t.tableType === "left" && t.type !== "extra")
+    .filter(
+      (t) =>
+        t.tableType === "left" && t.type !== "extra" && t.type !== "technical",
+    )
     .sort(sortTasks);
-
   const rightRegular = dayTasks
-    .filter((t) => t.tableType === "right" && t.type !== "extra")
+    .filter(
+      (t) =>
+        t.tableType === "right" && t.type !== "extra" && t.type !== "technical",
+    )
     .sort(sortTasks);
-
-  // Extras Tables (left vs right)
   const leftExtras = dayTasks
     .filter((t) => t.tableType === "left" && t.type === "extra")
     .sort(sortTasks);
-
   const rightExtras = dayTasks
     .filter((t) => t.tableType === "right" && t.type === "extra")
     .sort(sortTasks);
+  const technicalTasks = dayTasks
+    .filter((t) => t.type === "technical")
+    .sort(sortTasks);
 
-  // Maximum row counts for side-by-side alignment
   const maxRegularRows = Math.max(leftRegular.length, rightRegular.length);
   const maxExtraRows = Math.max(leftExtras.length, rightExtras.length);
 
-  // In-line updates
+  // ── In-line task updates ────────────────────────────────────────────────
   const handlePlateChange = (task: Task, vehicleIdVal: string) => {
     if (vehicleIdVal === "cancelled") {
       let newNotes = task.notes ?? "";
@@ -304,7 +461,6 @@ export function ExcelView() {
             ? ""
             : newNotes;
       const finalNotes = cleanNotes ? `${cleanNotes} | İPTAL` : "İPTAL";
-
       updateTaskMutation.mutate(
         {
           id: task.id,
@@ -315,20 +471,17 @@ export function ExcelView() {
           },
         },
         {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-          },
+          onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
         },
       );
       return;
     }
-
     if (vehicleIdVal === "custom_prompt") {
       const customPlate = prompt(
         "Lütfen özel plaka veya plakaları girin (Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456):",
       );
-      if (customPlate === null) return; // cancelled prompt
-
+      if (customPlate === null) return;
       let newNotes = task.notes ?? "";
       const cleanNotes = newNotes.includes(" | Plaka:")
         ? newNotes.split(" | Plaka:")[0]
@@ -337,13 +490,11 @@ export function ExcelView() {
           : newNotes === "İPTAL"
             ? ""
             : newNotes;
-
       const finalNotes = customPlate.trim()
         ? cleanNotes
           ? `${cleanNotes} | Plaka: ${customPlate.trim()}`
           : `Plaka: ${customPlate.trim()}`
         : cleanNotes;
-
       updateTaskMutation.mutate(
         {
           id: task.id,
@@ -354,18 +505,14 @@ export function ExcelView() {
           },
         },
         {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-          },
+          onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
         },
       );
       return;
     }
-
     const vId = vehicleIdVal === "" ? null : Number(vehicleIdVal);
-    const selectedVehicle = vehicles.find((v) => v.id === vId);
-
-    // Formulate plate notes to preserve crew
+    const selectedVehicle = (vehicles as any[]).find((v) => v.id === vId);
     let newNotes = task.notes ?? "";
     const cleanNotes = newNotes.includes(" | Plaka:")
       ? newNotes.split(" | Plaka:")[0]
@@ -374,7 +521,6 @@ export function ExcelView() {
         : newNotes === "İPTAL"
           ? ""
           : newNotes;
-
     if (selectedVehicle) {
       newNotes = cleanNotes
         ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
@@ -382,7 +528,6 @@ export function ExcelView() {
     } else {
       newNotes = cleanNotes;
     }
-
     updateTaskMutation.mutate(
       {
         id: task.id,
@@ -393,9 +538,8 @@ export function ExcelView() {
         },
       },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-        },
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
       },
     );
   };
@@ -403,19 +547,85 @@ export function ExcelView() {
   const handleKmChange = (taskId: number, kmVal: string) => {
     const kmNum = kmVal === "" ? null : Number(kmVal);
     updateTaskMutation.mutate(
+      { id: taskId, data: { km: kmNum } },
       {
-        id: taskId,
-        data: {
-          km: kmNum,
-        },
-      },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-        },
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
       },
     );
   };
+
+  // ── Vehicle plate select widget (shared) ────────────────────────────────
+  const PlateSelect = ({ task }: { task: Task }) => (
+    <select
+      className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${
+        task.status === "cancelled"
+          ? "text-rose-700 dark:text-rose-400 opacity-80"
+          : "text-primary"
+      }`}
+      value={
+        task.status === "cancelled"
+          ? "cancelled"
+          : (task.vehicleId ??
+            (getPlateFromNotes(task.notes)
+              ? `custom:${getPlateFromNotes(task.notes)}`
+              : ""))
+      }
+      onChange={(e) => handlePlateChange(task, e.target.value)}
+    >
+      <option value="">Plaka Seçin...</option>
+      <option value="cancelled" className="text-red-600 font-bold">
+        İPTAL
+      </option>
+      <option value="custom_prompt" className="text-blue-600 font-bold">
+        ✍️ Özel Plaka Yaz...
+      </option>
+      {task.vehicleId === null && getPlateFromNotes(task.notes) && (
+        <option
+          value={`custom:${getPlateFromNotes(task.notes)}`}
+          className="font-bold text-blue-600"
+        >
+          {getPlateFromNotes(task.notes)} (Özel)
+        </option>
+      )}
+      {(vehicles as any[]).map((v) => (
+        <option key={v.id} value={v.id}>
+          {v.plate} — {v.driverName}
+        </option>
+      ))}
+    </select>
+  );
+
+  // ── Drop zone wrapper for plate cell ───────────────────────────────────
+  const PlateDropCell = ({
+    task,
+    className,
+  }: {
+    task: Task;
+    className?: string;
+  }) => (
+    <td
+      className={`p-1 transition-colors ${
+        dragOverTaskId === task.id
+          ? "bg-primary/10 ring-1 ring-inset ring-primary/40 rounded"
+          : ""
+      } ${className ?? ""}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("text/vehicle-id")) {
+          e.preventDefault();
+          setDragOverTaskId(task.id);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setDragOverTaskId(null);
+        }
+      }}
+      onDrop={(e) => handleTaskDrop(e, task)}
+    >
+      <PlateSelect task={task} />
+    </td>
+  );
 
   const handleDownloadExcel = () => {
     window.open(`/api/excel/download?date=${selectedDate}`, "_blank");
@@ -425,9 +635,32 @@ export function ExcelView() {
     queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
   };
 
+  // ── Shared resize-handle cell ───────────────────────────────────────────
+  const ResizeTh = ({
+    tableType,
+    colIndex,
+    className,
+    children,
+  }: {
+    tableType: "regular" | "extra" | "technical";
+    colIndex: number;
+    className?: string;
+    children?: React.ReactNode;
+  }) => (
+    <th
+      className={`relative font-bold p-2 overflow-visible ${className ?? ""}`}
+    >
+      {children}
+      <div
+        className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
+        onMouseDown={(e) => startResize(tableType, colIndex, e)}
+      />
+    </th>
+  );
+
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* ── Page header ─────────────────────────────────────────────── */}
+      {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
           <div>
@@ -503,678 +736,770 @@ export function ExcelView() {
         </div>
       </div>
 
-      {/* ── Regular side-by-side spreadsheet ──────────────────────────── */}
-      <Card className="flex-1 overflow-hidden flex flex-col min-h-0 border-slate-200/80 shadow-sm">
-        <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="bg-blue-50 text-blue-700 border-blue-200"
+      {/* ── Main layout: queue panel + tables ───────────────────────────── */}
+      <div className="flex gap-4 flex-1 min-h-0">
+        {/* ── Vehicle Queue Panel ────────────────────────────────────────── */}
+        <Card
+          className="flex flex-col shrink-0 border-slate-200/80 shadow-sm overflow-hidden"
+          style={{ width: queueCollapsed ? 44 : 220 }}
+        >
+          {/* Queue header */}
+          <div className="p-2 border-b bg-card flex items-center justify-between shrink-0 gap-1">
+            {!queueCollapsed && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Users className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-bold truncate">ARAÇ SIRASI</span>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] px-1 py-0 ml-0.5 shrink-0"
+                >
+                  {localQueue.length}
+                </Badge>
+              </div>
+            )}
+            <button
+              className="w-7 h-7 rounded hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
+              onClick={() => setQueueCollapsed((c) => !c)}
+              title={queueCollapsed ? "Sırayı göster" : "Sırayı gizle"}
             >
-              GELİR (GELEN UÇUŞLAR)
-            </Badge>
-            <span className="text-muted-foreground text-xs">&bull;</span>
-            <Badge
-              variant="outline"
-              className="bg-amber-50 text-amber-700 border-amber-200"
-            >
-              GİDER (GİDEN UÇUŞLAR)
-            </Badge>
-          </h3>
-          <span className="text-xs font-mono text-muted-foreground">
-            Toplam: {dayTasks.length} Sefer ({leftRegular.length} Gelir /{" "}
-            {rightRegular.length} Gider)
-          </span>
-        </div>
-        <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-xs font-mono select-none table-fixed">
-            <colgroup>
-              {regularWidths.map((w, idx) => (
-                <col key={idx} style={{ width: w }} />
-              ))}
-            </colgroup>
-            <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              <tr className="divide-x divide-y divide-border">
-                {/* Left (Gelir) Header */}
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
-                  S.NO
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 0, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
-                  UÇUŞ KODU
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 1, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
-                  PLAKA (SÜRÜCÜ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 2, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
-                  SAAT
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 3, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
-                  OTEL ADI / NEREDEN
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 4, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-left overflow-visible">
-                  EKİP (KİŞİ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 5, e)}
-                  />
-                </th>
-                <th className="relative bg-blue-500/5 text-blue-700 font-bold p-2 text-center overflow-visible">
-                  KM
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 6, e)}
-                  />
-                </th>
+              {queueCollapsed ? (
+                <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
+              ) : (
+                <ChevronUp className="w-4 h-4 rotate-[-90deg]" />
+              )}
+            </button>
+          </div>
 
-                {/* Separation Column */}
-                <th className="bg-slate-100 dark:bg-slate-800 p-2 relative overflow-visible">
+          {!queueCollapsed && (
+            <>
+              {/* Queue items */}
+              <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1.5 min-h-0">
+                {localQueue.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground text-center py-4">
+                    Sırada araç yok
+                  </p>
+                )}
+                {localQueue.map((v: any, idx) => (
                   <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 7, e)}
-                  />
-                </th>
-
-                {/* Right (Gider) Header */}
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
-                  UÇUŞ KODU
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 8, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
-                  PLAKA (SÜRÜCÜ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 9, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-center overflow-visible">
-                  SAAT
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 10, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
-                  OTEL ADI / NEREYE
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 11, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-left overflow-visible">
-                  EKİP (KİŞİ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 12, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-700 font-bold p-2 text-center overflow-visible">
-                  KM
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("regular", 13, e)}
-                  />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {Array.from({ length: maxRegularRows }).map((_, idx) => {
-                const leftTask = leftRegular[idx] as ExtendedTask | undefined;
-                const rightTask = rightRegular[idx] as ExtendedTask | undefined;
-                const leftCancelled = leftTask?.status === "cancelled";
-                const rightCancelled = rightTask?.status === "cancelled";
-
-                return (
-                  <tr
-                    key={idx}
-                    className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                    key={v.id}
+                    draggable
+                    onDragStart={(e) => {
+                      handleQueueDragStart(idx);
+                      handleVehicleDragStart(e, v.id);
+                    }}
+                    onDragOver={(e) => handleQueueDragOver(e, idx)}
+                    onDragEnd={handleQueueDragEnd}
+                    className={`rounded-md p-2 text-[11px] border cursor-grab active:cursor-grabbing transition-all duration-100 flex flex-col gap-0.5 group relative
+                      ${
+                        v.type === "outsource"
+                          ? "border-dashed border-amber-300 bg-amber-50/40 dark:bg-amber-950/10"
+                          : "border bg-card hover:bg-muted/10"
+                      } ${draggedQueueIndex === idx ? "opacity-40 scale-95" : ""}`}
                   >
-                    {/* Left (Gelir) Task Cells */}
-                    {leftTask ? (
-                      <>
+                    <div className="flex items-center gap-1">
+                      <GripVertical className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+                      <Badge
+                        variant="secondary"
+                        className="font-mono bg-blue-100 text-blue-800 text-[9px] px-1 py-0 rounded shrink-0 font-extrabold dark:bg-blue-950 dark:text-blue-300"
+                      >
+                        #{idx + 1}
+                      </Badge>
+                      <span className="font-mono font-bold text-[11px] truncate text-foreground">
+                        {v.plate}
+                      </span>
+                      <button
+                        className="ml-auto opacity-0 group-hover:opacity-100 w-4 h-4 rounded hover:bg-rose-100 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
+                        onClick={() => handleRemoveFromQueue(v.id)}
+                        title="Sıradan çıkar"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground truncate pl-4">
+                      {v.driverName || "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add to queue */}
+              <div className="shrink-0 border-t p-2">
+                {isAddQueueOpen ? (
+                  <div className="flex flex-col gap-1.5">
+                    <select
+                      className="w-full text-[11px] border rounded px-1.5 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
+                      value={selectedVehicleId}
+                      onChange={(e) => setSelectedVehicleId(e.target.value)}
+                    >
+                      <option value="">Araç seç...</option>
+                      {availableVehicles.map((v: any) => (
+                        <option key={v.id} value={v.id}>
+                          {v.plate} — {v.driverName}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        className="flex-1 h-6 text-[10px] px-1"
+                        onClick={handleAddToQueue}
+                        disabled={!selectedVehicleId}
+                      >
+                        Ekle
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] px-1"
+                        onClick={() => {
+                          setIsAddQueueOpen(false);
+                          setSelectedVehicleId("");
+                        }}
+                      >
+                        İptal
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-7 text-[11px] gap-1"
+                    onClick={() => setIsAddQueueOpen(true)}
+                  >
+                    <Plus className="w-3 h-3" /> Sıraya Ekle
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* ── Tables column ─────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+          {/* ── Regular tasks table ───────────────────────────────────────── */}
+          <Card className="flex-1 overflow-hidden flex flex-col min-h-0 border-slate-200/80 shadow-sm">
+            <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="bg-blue-50 text-blue-700 border-blue-200"
+                >
+                  GELİR (GELEN UÇUŞLAR)
+                </Badge>
+                <span className="text-muted-foreground text-xs">&bull;</span>
+                <Badge
+                  variant="outline"
+                  className="bg-amber-50 text-amber-700 border-amber-200"
+                >
+                  GİDER (GİDEN UÇUŞLAR)
+                </Badge>
+              </h3>
+              <span className="text-xs font-mono text-muted-foreground">
+                {leftRegular.length} Gelir / {rightRegular.length} Gider
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full border-collapse text-xs font-mono select-none table-fixed">
+                <colgroup>
+                  {regularWidths.map((w, idx) => (
+                    <col key={idx} style={{ width: w }} />
+                  ))}
+                </colgroup>
+                <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
+                  <tr className="divide-x divide-y divide-border">
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={0}
+                      className="bg-blue-500/5 text-blue-700 text-center"
+                    >
+                      S.NO
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={1}
+                      className="bg-blue-500/5 text-blue-700 text-left"
+                    >
+                      UÇUŞ KODU
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={2}
+                      className="bg-blue-500/5 text-blue-700 text-left"
+                    >
+                      PLAKA (SÜRÜCÜ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={3}
+                      className="bg-blue-500/5 text-blue-700 text-center"
+                    >
+                      SAAT
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={4}
+                      className="bg-blue-500/5 text-blue-700 text-left"
+                    >
+                      OTEL ADI / NEREDEN
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={5}
+                      className="bg-blue-500/5 text-blue-700 text-left"
+                    >
+                      EKİP (KİŞİ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={6}
+                      className="bg-blue-500/5 text-blue-700 text-center"
+                    >
+                      KM
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={7}
+                      className="bg-slate-100 dark:bg-slate-800"
+                    />
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={8}
+                      className="bg-amber-500/5 text-amber-700 text-left"
+                    >
+                      UÇUŞ KODU
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={9}
+                      className="bg-amber-500/5 text-amber-700 text-left"
+                    >
+                      PLAKA (SÜRÜCÜ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={10}
+                      className="bg-amber-500/5 text-amber-700 text-center"
+                    >
+                      SAAT
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={11}
+                      className="bg-amber-500/5 text-amber-700 text-left"
+                    >
+                      OTEL ADI / NEREYE
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={12}
+                      className="bg-amber-500/5 text-amber-700 text-left"
+                    >
+                      EKİP (KİŞİ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="regular"
+                      colIndex={13}
+                      className="bg-amber-500/5 text-amber-700 text-center"
+                    >
+                      KM
+                    </ResizeTh>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {Array.from({ length: maxRegularRows }).map((_, idx) => {
+                    const leftTask = leftRegular[idx] as
+                      | ExtendedTask
+                      | undefined;
+                    const rightTask = rightRegular[idx] as
+                      | ExtendedTask
+                      | undefined;
+                    const lc = leftTask?.status === "cancelled";
+                    const rc = rightTask?.status === "cancelled";
+                    return (
+                      <tr
+                        key={idx}
+                        className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                      >
+                        {leftTask ? (
+                          <>
+                            <td
+                              className={`p-1.5 text-center font-bold ${lc ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                            >
+                              {idx + 1}
+                            </td>
+                            <td
+                              className={`p-1.5 font-bold uppercase ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              title={leftTask.flightCode ?? ""}
+                            >
+                              <div className="truncate w-full">
+                                {leftTask.flightCode || "-"}
+                              </div>
+                            </td>
+                            <PlateDropCell
+                              task={leftTask}
+                              className={
+                                lc ? "bg-rose-50/20 dark:bg-rose-950/10" : ""
+                              }
+                            />
+                            <td
+                              className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${lc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}
+                            >
+                              {utcTime(leftTask.scheduledTime)}
+                            </td>
+                            <td
+                              className={`p-1.5 font-medium ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              title={leftTask.pickupLocation}
+                            >
+                              <div className="truncate w-full">
+                                {leftTask.pickupLocation}
+                              </div>
+                            </td>
+                            <td
+                              className={`p-1.5 font-medium ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                              title={leftTask.notes ?? ""}
+                            >
+                              <div className="truncate w-full">
+                                {leftTask.notes &&
+                                (leftTask.notes.includes("CPT") ||
+                                  leftTask.notes.includes("KBN") ||
+                                  leftTask.notes
+                                    .toLowerCase()
+                                    .includes("cpt") ||
+                                  leftTask.notes.toLowerCase().includes("kbn"))
+                                  ? leftTask.notes.includes(" | Plaka:")
+                                    ? leftTask.notes.split(" | Plaka:")[0]
+                                    : leftTask.notes
+                                  : `${leftTask.passengerCount} kişi`}
+                              </div>
+                            </td>
+                            <td
+                              className={`p-1 ${lc ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
+                            >
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={lc}
+                                className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
+                                defaultValue={
+                                  leftTask.km != null ? Number(leftTask.km) : ""
+                                }
+                                placeholder="KM"
+                                onBlur={(e) =>
+                                  handleKmChange(leftTask.id, e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                }}
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
+                              {idx + 1}
+                            </td>
+                            <td colSpan={6} className="bg-slate-50/10" />
+                          </>
+                        )}
+                        <td className="bg-slate-100 dark:bg-slate-800 p-0" />
+                        {rightTask ? (
+                          <>
+                            <td
+                              className={`p-1.5 font-bold uppercase ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              title={rightTask.flightCode ?? ""}
+                            >
+                              <div className="truncate w-full">
+                                {rightTask.flightCode || "-"}
+                              </div>
+                            </td>
+                            <PlateDropCell
+                              task={rightTask}
+                              className={
+                                rc ? "bg-rose-50/20 dark:bg-rose-950/10" : ""
+                              }
+                            />
+                            <td
+                              className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                            >
+                              {utcTime(rightTask.scheduledTime)}
+                            </td>
+                            <td
+                              className={`p-1.5 font-medium ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              title={rightTask.dropoffLocation}
+                            >
+                              <div className="truncate w-full">
+                                {rightTask.dropoffLocation}
+                              </div>
+                            </td>
+                            <td
+                              className={`p-1.5 font-medium ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                              title={rightTask.notes ?? ""}
+                            >
+                              <div className="truncate w-full">
+                                {rightTask.notes &&
+                                (rightTask.notes.includes("CPT") ||
+                                  rightTask.notes.includes("KBN") ||
+                                  rightTask.notes
+                                    .toLowerCase()
+                                    .includes("cpt") ||
+                                  rightTask.notes.toLowerCase().includes("kbn"))
+                                  ? rightTask.notes.includes(" | Plaka:")
+                                    ? rightTask.notes.split(" | Plaka:")[0]
+                                    : rightTask.notes
+                                  : `${rightTask.passengerCount} kişi`}
+                              </div>
+                            </td>
+                            <td
+                              className={`p-1 ${rc ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
+                            >
+                              <input
+                                type="number"
+                                min={0}
+                                disabled={rc}
+                                className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
+                                defaultValue={
+                                  rightTask.km != null
+                                    ? Number(rightTask.km)
+                                    : ""
+                                }
+                                placeholder="KM"
+                                onBlur={(e) =>
+                                  handleKmChange(rightTask.id, e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") e.currentTarget.blur();
+                                }}
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <td colSpan={6} className="bg-slate-50/10" />
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {maxRegularRows === 0 && (
+                    <tr>
+                      <td
+                        colSpan={14}
+                        className="p-8 text-center text-muted-foreground"
+                      >
+                        Seçilen güne ait düzenli sefer kaydı bulunmamaktadır.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* ── Extras table ──────────────────────────────────────────────── */}
+          <Card className="overflow-hidden border-slate-200/80 shadow-sm max-h-[240px] flex flex-col shrink-0">
+            <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="bg-amber-100 text-amber-800 border-amber-300"
+                >
+                  EKSTRA GİDER
+                </Badge>
+                <span className="text-muted-foreground text-xs">&bull;</span>
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-100 text-emerald-800 border-emerald-300"
+                >
+                  EKSTRA GELİR
+                </Badge>
+              </h3>
+              <span className="text-xs font-mono text-muted-foreground">
+                {leftExtras.length + rightExtras.length} Ekstra
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full border-collapse text-xs font-mono table-fixed">
+                <colgroup>
+                  {extraWidths.map((w, idx) => (
+                    <col key={idx} style={{ width: w }} />
+                  ))}
+                </colgroup>
+                <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
+                  <tr className="divide-x divide-y divide-border">
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={0}
+                      className="bg-amber-500/5 text-amber-800 text-center"
+                    >
+                      S.NO
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={1}
+                      className="bg-amber-500/5 text-amber-800 text-center"
+                    >
+                      SAAT
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={2}
+                      className="bg-amber-500/5 text-amber-800 text-left"
+                    >
+                      PLAKA (SÜRÜCÜ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={3}
+                      className="bg-amber-500/5 text-amber-800 text-left"
+                    >
+                      OTEL / AÇIKLAMA
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={4}
+                      className="bg-slate-100 dark:bg-slate-800"
+                    />
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={5}
+                      className="bg-emerald-500/5 text-emerald-800 text-center"
+                    >
+                      SAAT
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={6}
+                      className="bg-emerald-500/5 text-emerald-800 text-left"
+                    >
+                      PLAKA (SÜRÜCÜ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="extra"
+                      colIndex={7}
+                      className="bg-emerald-500/5 text-emerald-800 text-left"
+                    >
+                      OTEL / AÇIKLAMA
+                    </ResizeTh>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {Array.from({ length: maxExtraRows }).map((_, idx) => {
+                    const le = leftExtras[idx] as ExtendedTask | undefined;
+                    const re = rightExtras[idx] as ExtendedTask | undefined;
+                    const lec = le?.status === "cancelled";
+                    const rec = re?.status === "cancelled";
+                    return (
+                      <tr
+                        key={idx}
+                        className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                      >
+                        {le ? (
+                          <>
+                            <td
+                              className={`p-1.5 text-center font-bold ${lec ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                            >
+                              {idx + 1}
+                            </td>
+                            <td
+                              className={`p-1.5 text-center font-bold bg-amber-50/10 ${lec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                            >
+                              {utcTime(le.scheduledTime)}
+                            </td>
+                            <PlateDropCell
+                              task={le}
+                              className={
+                                lec ? "bg-rose-50/20 dark:bg-rose-950/10" : ""
+                              }
+                            />
+                            <td
+                              className={`p-1.5 font-medium ${lec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              title={le.pickupLocation}
+                            >
+                              <div className="truncate w-full">
+                                {le.pickupLocation}
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
+                              {idx + 1}
+                            </td>
+                            <td colSpan={3} className="bg-slate-50/10" />
+                          </>
+                        )}
+                        <td className="bg-slate-100 dark:bg-slate-800 p-0" />
+                        {re ? (
+                          <>
+                            <td
+                              className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
+                            >
+                              {utcTime(re.scheduledTime)}
+                            </td>
+                            <PlateDropCell
+                              task={re}
+                              className={
+                                rec ? "bg-rose-50/20 dark:bg-rose-950/10" : ""
+                              }
+                            />
+                            <td
+                              className={`p-1.5 font-medium ${rec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`}
+                              title={re.pickupLocation}
+                            >
+                              <div className="truncate w-full">
+                                {re.pickupLocation}
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <td colSpan={3} className="bg-slate-50/10" />
+                        )}
+                      </tr>
+                    );
+                  })}
+                  {maxExtraRows === 0 && (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="p-6 text-center text-muted-foreground"
+                      >
+                        Seçilen güne ait ekstra sefer kaydı bulunmamaktadır.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* ── Technical tasks table ─────────────────────────────────────── */}
+          <Card className="overflow-hidden border-amber-200/80 shadow-sm max-h-[200px] flex flex-col shrink-0">
+            <div className="p-3 border-b bg-amber-50/30 dark:bg-amber-950/10 shrink-0 flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-amber-600" />
+                <Badge
+                  variant="outline"
+                  className="bg-amber-100 text-amber-900 border-amber-300"
+                >
+                  TEKNİK İŞLER
+                </Badge>
+              </h3>
+              <span className="text-xs font-mono text-muted-foreground">
+                {technicalTasks.length} iş
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <table className="w-full border-collapse text-xs font-mono table-fixed">
+                <colgroup>
+                  {technicalWidths.map((w, idx) => (
+                    <col key={idx} style={{ width: w }} />
+                  ))}
+                </colgroup>
+                <thead className="bg-amber-50/60 dark:bg-amber-950/20 sticky top-0 z-20 border-b">
+                  <tr className="divide-x divide-border">
+                    <ResizeTh
+                      tableType="technical"
+                      colIndex={0}
+                      className="text-amber-800 text-center"
+                    >
+                      S.NO
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="technical"
+                      colIndex={1}
+                      className="text-amber-800 text-center"
+                    >
+                      SAAT
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="technical"
+                      colIndex={2}
+                      className="text-amber-800 text-left"
+                    >
+                      PLAKA (SÜRÜCÜ)
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="technical"
+                      colIndex={3}
+                      className="text-amber-800 text-left"
+                    >
+                      AÇIKLAMA
+                    </ResizeTh>
+                    <ResizeTh
+                      tableType="technical"
+                      colIndex={4}
+                      className="text-amber-800 text-center"
+                    >
+                      KM
+                    </ResizeTh>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {technicalTasks.map((task, idx) => {
+                    const cancelled = task.status === "cancelled";
+                    return (
+                      <tr
+                        key={task.id}
+                        className="divide-x divide-border bg-amber-50/20 dark:bg-amber-950/5 hover:bg-amber-50/50 dark:hover:bg-amber-950/10 transition-colors"
+                      >
                         <td
-                          className={`p-1.5 text-center font-bold ${leftCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                          className={`p-1.5 text-center font-bold ${cancelled ? "text-rose-700/60 line-through" : "text-amber-800/70"}`}
                         >
                           {idx + 1}
                         </td>
                         <td
-                          className={`p-1.5 font-bold uppercase ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
-                          title={leftTask.flightCode ?? ""}
+                          className={`p-1.5 text-center font-bold ${cancelled ? "text-rose-700/60 line-through" : "text-amber-700"}`}
                         >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {leftTask.flightCode || "-"}
+                          {utcTime(task.scheduledTime)}
+                        </td>
+                        <PlateDropCell
+                          task={task}
+                          className={cancelled ? "opacity-60" : ""}
+                        />
+                        <td
+                          className={`p-1.5 font-medium ${cancelled ? "opacity-60 line-through text-rose-900/80" : "text-foreground"}`}
+                          title={task.pickupLocation}
+                        >
+                          <div className="truncate w-full">
+                            {task.pickupLocation}
                           </div>
                         </td>
-                        <td
-                          className={`p-1 ${leftCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
-                        >
-                          <select
-                            className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={
-                              leftTask.status === "cancelled"
-                                ? "cancelled"
-                                : (leftTask.vehicleId ??
-                                  (getPlateFromNotes(leftTask.notes)
-                                    ? `custom:${getPlateFromNotes(leftTask.notes)}`
-                                    : ""))
-                            }
-                            onChange={(e) =>
-                              handlePlateChange(leftTask, e.target.value)
-                            }
-                          >
-                            <option value="">Plaka Seçin...</option>
-                            <option
-                              value="cancelled"
-                              className="text-red-600 font-bold"
-                            >
-                              İPTAL
-                            </option>
-                            <option
-                              value="custom_prompt"
-                              className="text-blue-600 font-bold"
-                            >
-                              ✍️ Özel Plaka Yaz...
-                            </option>
-                            {leftTask.vehicleId === null &&
-                              getPlateFromNotes(leftTask.notes) && (
-                                <option
-                                  value={`custom:${getPlateFromNotes(leftTask.notes)}`}
-                                  className="font-bold text-blue-600"
-                                >
-                                  {getPlateFromNotes(leftTask.notes)} (Özel)
-                                </option>
-                              )}
-                            {vehicles.map((v: any) => (
-                              <option key={v.id} value={v.id}>
-                                {v.plate} — {v.driverName}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td
-                          className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${leftCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}
-                        >
-                          {utcTime(leftTask.scheduledTime)}
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
-                          title={leftTask.pickupLocation}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {leftTask.pickupLocation}
-                          </div>
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
-                          title={leftTask.notes ?? ""}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {leftTask.notes &&
-                            (leftTask.notes.includes("CPT") ||
-                              leftTask.notes.includes("KBN") ||
-                              leftTask.notes.toLowerCase().includes("cpt") ||
-                              leftTask.notes.toLowerCase().includes("kbn"))
-                              ? leftTask.notes.includes(" | Plaka:")
-                                ? leftTask.notes.split(" | Plaka:")[0]
-                                : leftTask.notes
-                              : `${leftTask.passengerCount} kişi`}
-                          </div>
-                        </td>
-                        <td
-                          className={`p-1 ${leftCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
-                        >
+                        <td className={`p-1 ${cancelled ? "opacity-60" : ""}`}>
                           <input
                             type="number"
                             min={0}
-                            disabled={leftCancelled}
-                            className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
+                            disabled={cancelled}
+                            className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-amber-100/40 dark:hover:bg-amber-950/20 rounded transition-all duration-150"
                             defaultValue={
-                              leftTask.km != null ? Number(leftTask.km) : ""
+                              task.km != null ? Number(task.km) : ""
                             }
                             placeholder="KM"
                             onBlur={(e) =>
-                              handleKmChange(leftTask.id, e.target.value)
+                              handleKmChange(task.id, e.target.value)
                             }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.currentTarget.blur();
-                              }
+                              if (e.key === "Enter") e.currentTarget.blur();
                             }}
                           />
                         </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
-                          {idx + 1}
-                        </td>
-                        <td colSpan={6} className="bg-slate-50/10"></td>
-                      </>
-                    )}
-
-                    {/* Separator Column */}
-                    <td className="bg-slate-100 dark:bg-slate-800 p-0"></td>
-
-                    {/* Right (Gider) Task Cells */}
-                    {rightTask ? (
-                      <>
-                        <td
-                          className={`p-1.5 font-bold uppercase ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
-                          title={rightTask.flightCode ?? ""}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {rightTask.flightCode || "-"}
-                          </div>
-                        </td>
-                        <td
-                          className={`p-1 ${rightCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
-                        >
-                          <select
-                            className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={
-                              rightTask.status === "cancelled"
-                                ? "cancelled"
-                                : (rightTask.vehicleId ??
-                                  (getPlateFromNotes(rightTask.notes)
-                                    ? `custom:${getPlateFromNotes(rightTask.notes)}`
-                                    : ""))
-                            }
-                            onChange={(e) =>
-                              handlePlateChange(rightTask, e.target.value)
-                            }
-                          >
-                            <option value="">Plaka Seçin...</option>
-                            <option
-                              value="cancelled"
-                              className="text-red-600 font-bold"
-                            >
-                              İPTAL
-                            </option>
-                            <option
-                              value="custom_prompt"
-                              className="text-blue-600 font-bold"
-                            >
-                              ✍️ Özel Plaka Yaz...
-                            </option>
-                            {rightTask.vehicleId === null &&
-                              getPlateFromNotes(rightTask.notes) && (
-                                <option
-                                  value={`custom:${getPlateFromNotes(rightTask.notes)}`}
-                                  className="font-bold text-blue-600"
-                                >
-                                  {getPlateFromNotes(rightTask.notes)} (Özel)
-                                </option>
-                              )}
-                            {vehicles.map((v: any) => (
-                              <option key={v.id} value={v.id}>
-                                {v.plate} — {v.driverName}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td
-                          className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rightCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
-                        >
-                          {utcTime(rightTask.scheduledTime)}
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
-                          title={rightTask.dropoffLocation}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {rightTask.dropoffLocation}
-                          </div>
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
-                          title={rightTask.notes ?? ""}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {rightTask.notes &&
-                            (rightTask.notes.includes("CPT") ||
-                              rightTask.notes.includes("KBN") ||
-                              rightTask.notes.toLowerCase().includes("cpt") ||
-                              rightTask.notes.toLowerCase().includes("kbn"))
-                              ? rightTask.notes.includes(" | Plaka:")
-                                ? rightTask.notes.split(" | Plaka:")[0]
-                                : rightTask.notes
-                              : `${rightTask.passengerCount} kişi`}
-                          </div>
-                        </td>
-                        <td
-                          className={`p-1 ${rightCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
-                        >
-                          <input
-                            type="number"
-                            min={0}
-                            disabled={rightCancelled}
-                            className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
-                            defaultValue={
-                              rightTask.km != null ? Number(rightTask.km) : ""
-                            }
-                            placeholder="KM"
-                            onBlur={(e) =>
-                              handleKmChange(rightTask.id, e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.currentTarget.blur();
-                              }
-                            }}
-                          />
-                        </td>
-                      </>
-                    ) : (
-                      <td colSpan={6} className="bg-slate-50/10"></td>
-                    )}
-                  </tr>
-                );
-              })}
-              {maxRegularRows === 0 && (
-                <tr>
-                  <td
-                    colSpan={14}
-                    className="p-8 text-center text-muted-foreground"
-                  >
-                    Seçilen güne ait düzenli sefer kaydı bulunmamaktadır.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </tr>
+                    );
+                  })}
+                  {technicalTasks.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="p-6 text-center text-muted-foreground"
+                      >
+                        Seçilen güne ait teknik iş kaydı bulunmamaktadır.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
-      </Card>
-
-      {/* ── Extras side-by-side spreadsheet ───────────────────────────── */}
-      <Card className="overflow-hidden border-slate-200/80 shadow-sm max-h-[300px] flex flex-col">
-        <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Badge
-              variant="outline"
-              className="bg-amber-100 text-amber-800 border-amber-300"
-            >
-              EKSTRA GİDER (OTEL / AÇIKLAMA)
-            </Badge>
-            <span className="text-muted-foreground text-xs">&bull;</span>
-            <Badge
-              variant="outline"
-              className="bg-emerald-100 text-emerald-800 border-emerald-300"
-            >
-              EKSTRA GELİR (OTEL / AÇIKLAMA)
-            </Badge>
-          </h3>
-          <span className="text-xs font-mono text-muted-foreground">
-            Toplam: {leftExtras.length + rightExtras.length} Ekstra
-          </span>
-        </div>
-        <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse text-xs font-mono table-fixed">
-            <colgroup>
-              {extraWidths.map((w, idx) => (
-                <col key={idx} style={{ width: w }} />
-              ))}
-            </colgroup>
-            <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-20 border-b shadow-[0_1px_0_rgba(0,0,0,0.05)]">
-              <tr className="divide-x divide-y divide-border">
-                {/* Left Extras Header */}
-                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-center overflow-visible">
-                  S.NO
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 0, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-center overflow-visible">
-                  SAAT
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 1, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-left overflow-visible">
-                  PLAKA (SÜRÜCÜ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 2, e)}
-                  />
-                </th>
-                <th className="relative bg-amber-500/5 text-amber-800 font-bold p-2 text-left overflow-visible">
-                  OTEL / AÇIKLAMA
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 3, e)}
-                  />
-                </th>
-
-                {/* Separation Column */}
-                <th className="bg-slate-100 dark:bg-slate-800 p-2 relative overflow-visible">
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 4, e)}
-                  />
-                </th>
-
-                {/* Right Extras Header */}
-                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-center overflow-visible">
-                  SAAT
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 5, e)}
-                  />
-                </th>
-                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left overflow-visible">
-                  PLAKA (SÜRÜCÜ)
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 6, e)}
-                  />
-                </th>
-                <th className="relative bg-emerald-500/5 text-emerald-800 font-bold p-2 text-left overflow-visible">
-                  OTEL / AÇIKLAMA
-                  <div
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-emerald-500/50 active:bg-emerald-500 select-none z-30 transition-colors"
-                    onMouseDown={(e) => startResize("extra", 7, e)}
-                  />
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {Array.from({ length: maxExtraRows }).map((_, idx) => {
-                const leftExtra = leftExtras[idx] as ExtendedTask | undefined;
-                const rightExtra = rightExtras[idx] as ExtendedTask | undefined;
-                const leftExtraCancelled = leftExtra?.status === "cancelled";
-                const rightExtraCancelled = rightExtra?.status === "cancelled";
-
-                return (
-                  <tr
-                    key={idx}
-                    className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
-                  >
-                    {/* Left Extras Cells */}
-                    {leftExtra ? (
-                      <>
-                        <td
-                          className={`p-1.5 text-center font-bold ${leftExtraCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
-                        >
-                          {idx + 1}
-                        </td>
-                        <td
-                          className={`p-1.5 text-center font-bold bg-amber-50/10 ${leftExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
-                        >
-                          {utcTime(leftExtra.scheduledTime)}
-                        </td>
-                        <td
-                          className={`p-1 ${leftExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
-                        >
-                          <select
-                            className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={
-                              leftExtra.status === "cancelled"
-                                ? "cancelled"
-                                : (leftExtra.vehicleId ??
-                                  (getPlateFromNotes(leftExtra.notes)
-                                    ? `custom:${getPlateFromNotes(leftExtra.notes)}`
-                                    : ""))
-                            }
-                            onChange={(e) =>
-                              handlePlateChange(leftExtra, e.target.value)
-                            }
-                          >
-                            <option value="">Plaka Seçin...</option>
-                            <option
-                              value="cancelled"
-                              className="text-red-600 font-bold"
-                            >
-                              İPTAL
-                            </option>
-                            <option
-                              value="custom_prompt"
-                              className="text-blue-600 font-bold"
-                            >
-                              ✍️ Özel Plaka Yaz...
-                            </option>
-                            {leftExtra.vehicleId === null &&
-                              getPlateFromNotes(leftExtra.notes) && (
-                                <option
-                                  value={`custom:${getPlateFromNotes(leftExtra.notes)}`}
-                                  className="font-bold text-blue-600"
-                                >
-                                  {getPlateFromNotes(leftExtra.notes)} (Özel)
-                                </option>
-                              )}
-                            {vehicles.map((v: any) => (
-                              <option key={v.id} value={v.id}>
-                                {v.plate} — {v.driverName}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${leftExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
-                          title={leftExtra.pickupLocation}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {leftExtra.pickupLocation}
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
-                          {idx + 1}
-                        </td>
-                        <td colSpan={3} className="bg-slate-50/10"></td>
-                      </>
-                    )}
-
-                    {/* Separator Column */}
-                    <td className="bg-slate-100 dark:bg-slate-800 p-0"></td>
-
-                    {/* Right Extras Cells */}
-                    {rightExtra ? (
-                      <>
-                        <td
-                          className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rightExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
-                        >
-                          {utcTime(rightExtra.scheduledTime)}
-                        </td>
-                        <td
-                          className={`p-1 ${rightExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
-                        >
-                          <select
-                            className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={
-                              rightExtra.status === "cancelled"
-                                ? "cancelled"
-                                : (rightExtra.vehicleId ??
-                                  (getPlateFromNotes(rightExtra.notes)
-                                    ? `custom:${getPlateFromNotes(rightExtra.notes)}`
-                                    : ""))
-                            }
-                            onChange={(e) =>
-                              handlePlateChange(rightExtra, e.target.value)
-                            }
-                          >
-                            <option value="">Plaka Seçin...</option>
-                            <option
-                              value="cancelled"
-                              className="text-red-600 font-bold"
-                            >
-                              İPTAL
-                            </option>
-                            <option
-                              value="custom_prompt"
-                              className="text-blue-600 font-bold"
-                            >
-                              ✍️ Özel Plaka Yaz...
-                            </option>
-                            {rightExtra.vehicleId === null &&
-                              getPlateFromNotes(rightExtra.notes) && (
-                                <option
-                                  value={`custom:${getPlateFromNotes(rightExtra.notes)}`}
-                                  className="font-bold text-blue-600"
-                                >
-                                  {getPlateFromNotes(rightExtra.notes)} (Özel)
-                                </option>
-                              )}
-                            {vehicles.map((v: any) => (
-                              <option key={v.id} value={v.id}>
-                                {v.plate} — {v.driverName}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td
-                          className={`p-1.5 font-medium ${rightExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`}
-                          title={rightExtra.pickupLocation}
-                        >
-                          <div className="truncate w-full block whitespace-nowrap">
-                            {rightExtra.pickupLocation}
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      <td colSpan={3} className="bg-slate-50/10"></td>
-                    )}
-                  </tr>
-                );
-              })}
-              {maxExtraRows === 0 && (
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="p-6 text-center text-muted-foreground"
-                  >
-                    Seçilen güne ait ekstra sefer kaydı bulunmamaktadır.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      </div>
     </div>
   );
 }
