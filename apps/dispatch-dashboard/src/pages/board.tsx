@@ -1715,7 +1715,7 @@ function TaskCard({
           <div className="flex items-center gap-1.5 font-bold text-sm">
             <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
             <span className={isDelayed ? "text-amber-600" : ""}>
-              {format(scheduledDate, "HH:mm")}
+              {utcTime(task.scheduledTime)}
             </span>
             {isDelayed && <AlertTriangle className="w-3 h-3 text-amber-500" />}
           </div>

@@ -214,8 +214,7 @@ function buildRegularTask(
     const ekip = String(row[5] || "").trim();
     const kmRaw = row[6];
 
-    if (!isValidValue(row[4])) return null;
-    if (!isValidValue(row[1]) && !isValidValue(row[4])) return null;
+    if (!isValidValue(row[4])) return null; // No hotel name → skip
 
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
@@ -250,8 +249,7 @@ function buildRegularTask(
     const ekip = String(row[11] || "").trim();
     const kmRaw = row[12];
 
-    if (!isValidValue(row[10])) return null;
-    if (!isValidValue(row[7]) && !isValidValue(row[10])) return null;
+    if (!isValidValue(row[10])) return null; // No hotel name → skip
 
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";

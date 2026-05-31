@@ -144,7 +144,7 @@ export function Reports() {
   // Daily statistics for completed trips & distance (last 7 active days)
   const dailyStats = completedTasks.reduce(
     (acc, t) => {
-      const day = format(new Date(t.scheduledTime), "yyyy-MM-dd");
+      const day = t.scheduledTime.substring(0, 10); // UTC date, e.g. "2026-05-01"
       if (!acc[day]) {
         acc[day] = { tripCount: 0, totalKm: 0 };
       }
@@ -183,14 +183,13 @@ export function Reports() {
 
   const months = Array.from(
     new Set(
-      technicalTasks.map((t) => format(new Date(t.scheduledTime), "yyyy-MM")),
+      technicalTasks.map((t) => t.scheduledTime.substring(0, 7)), // UTC month,
     ),
   ).sort((a, b) => b.localeCompare(a));
 
   const filteredTechnicalTasks = technicalTasks
     .filter((t) => {
-      const taskDate = new Date(t.scheduledTime);
-      const monthStr = format(taskDate, "yyyy-MM");
+      const monthStr = t.scheduledTime.substring(0, 7); // UTC month "YYYY-MM"
       const matchesMonth =
         selectedMonth === "all" || monthStr === selectedMonth;
 
@@ -259,7 +258,7 @@ export function Reports() {
       "Durum",
     ];
     const rows = filteredTechnicalTasks.map((t) => [
-      format(new Date(t.scheduledTime), "yyyy-MM-dd"),
+      t.scheduledTime.substring(0, 10), // UTC date for CSV
       utcTime(t.scheduledTime),
       t.vehicleName || "Atanmadı",
       t.driverName || "Belirtilmedi",
