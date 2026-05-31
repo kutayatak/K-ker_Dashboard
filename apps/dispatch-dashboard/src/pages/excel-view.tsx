@@ -43,17 +43,30 @@ export function ExcelView() {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
+  // Helper to get shift date key (D 06:00 to D+1 05:59 belongs to shift D)
+  const getShiftDateKey = (scheduledTime: string) => {
+    const d = new Date(scheduledTime);
+    if (isNaN(d.getTime())) return "";
+    const hours = d.getHours();
+    const shiftDate = new Date(d);
+    if (hours < 6) {
+      shiftDate.setDate(shiftDate.getDate() - 1);
+    }
+    return `${shiftDate.getFullYear()}-${String(shiftDate.getMonth() + 1).padStart(2, "0")}-${String(shiftDate.getDate()).padStart(2, "0")}`;
+  };
+
   // Pre-compute calendar day status
   const { completedDays, uncompletedDays } = useMemo(() => {
     const byDate = new Map<string, { hasActive: boolean }>();
     if (Array.isArray(tasks)) {
       for (const t of tasks as any[]) {
         if (!t?.scheduledTime) continue;
-        const d = new Date(t.scheduledTime);
-        if (isNaN(d.getTime())) continue;
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const key = getShiftDateKey(t.scheduledTime);
+        if (!key) continue;
         const prev = byDate.get(key);
-        const isActive = t.status !== "completed" && t.status !== "cancelled";
+        // Technical tasks are completed by default as they have no vehicle/plate.
+        // Other tasks are active if they are not completed and not cancelled.
+        const isActive = t.status !== "completed" && t.status !== "cancelled" && t.type !== "technical";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
       }
     }
