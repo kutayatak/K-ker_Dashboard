@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useListTasks,
@@ -52,7 +52,29 @@ const DEFAULT_EXTRA_WIDTHS = [
 
 export function ExcelView() {
   const queryClient = useQueryClient();
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const dateParam = params.get("date");
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return dateParam;
+    }
+    return new Date().toISOString().split("T")[0];
+  });
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const dateParam = params.get("date");
+      if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        setSelectedDate(dateParam);
+      }
+    };
+    handleUrlChange();
+    
+    // Listen for url changes or popstate events
+    window.addEventListener("popstate", handleUrlChange);
+    return () => window.removeEventListener("popstate", handleUrlChange);
+  }, [window.location.search]);
 
   const [regularWidths, setRegularWidths] = useState<number[]>(() => {
     try {

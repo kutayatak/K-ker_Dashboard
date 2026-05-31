@@ -124,9 +124,18 @@ router.post("/import", async (req, res) => {
   // ── Save Excel file if provided ──────────────────────────────────────────
   if (excelBase64 && excelDate) {
     const { excelFilesTable } = await import("@workspace/db");
+    
+    // Format YYYY-MM-DD to DDMMYY (ggaayy)
+    const formatToDDMMYY = (dStr: string) => {
+      if (!dStr.includes("-")) return dStr;
+      const [y, m, d] = dStr.split("-");
+      return `${d}${m}${y.slice(2)}`;
+    };
+    const ggaayy = formatToDDMMYY(excelDate);
+
     await db
       .insert(excelFilesTable)
-      .values({ date: excelDate, filename: excelFilename ?? "import.xlsx", data: excelBase64 })
+      .values({ date: ggaayy, filename: excelFilename ?? "import.xlsx", data: excelBase64 })
       .onConflictDoUpdate({
         target: excelFilesTable.date,
         set: { filename: excelFilename ?? "import.xlsx", data: excelBase64, uploadedAt: new Date() },

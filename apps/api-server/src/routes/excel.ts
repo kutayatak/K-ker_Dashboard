@@ -5,16 +5,25 @@ import ExcelJS from "exceljs";
 
 const router = Router();
 
+// Helper to convert YYYY-MM-DD to DDMMYY
+const formatToDDMMYY = (dateStr: string): string => {
+  if (!dateStr || !dateStr.includes("-")) return dateStr;
+  const [y, m, d] = dateStr.split("-");
+  return `${d}${m}${y.slice(2)}`;
+};
+
 // GET /excel/download?date=YYYY-MM-DD
 // Returns the stored Excel file with plate values written to the correct cells
 router.get("/download", async (req: any, res: any) => {
   const date = req.query.date as string;
   if (!date) return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
 
+  const dmy = formatToDDMMYY(date);
+
   const [file] = await db
     .select()
     .from(excelFilesTable)
-    .where(eq(excelFilesTable.date, date));
+    .where(sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`);
 
   if (!file) return res.status(404).json({ error: "No Excel file stored for this date" });
 
@@ -148,15 +157,33 @@ router.get("/download", async (req: any, res: any) => {
   return res.send(outBuf);
 });
 
+// GET /excel/files
+// Returns a list of all stored Excel files
+router.get("/files", async (req, res) => {
+  const files = await db
+    .select({
+      id: excelFilesTable.id,
+      date: excelFilesTable.date,
+      filename: excelFilesTable.filename,
+      uploadedAt: excelFilesTable.uploadedAt,
+    })
+    .from(excelFilesTable)
+    .orderBy(sql`${excelFilesTable.uploadedAt} DESC`);
+  return res.json(files);
+});
+
 // GET /excel/has?date=YYYY-MM-DD
 // Returns whether a file is stored for this date
 router.get("/has", async (req, res) => {
   const date = req.query.date as string;
   if (!date) return res.status(400).json({ error: "date query param required" });
+  const dmy = formatToDDMMYY(date);
+
   const [file] = await db
     .select({ id: excelFilesTable.id, filename: excelFilesTable.filename, uploadedAt: excelFilesTable.uploadedAt })
     .from(excelFilesTable)
-    .where(eq(excelFilesTable.date, date));
+    .where(sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`);
+
   return res.json({ exists: !!file, filename: file?.filename ?? null, uploadedAt: file?.uploadedAt ?? null });
 });
 

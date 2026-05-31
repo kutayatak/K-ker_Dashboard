@@ -13,7 +13,7 @@ import {
   SidebarFooter,
   SidebarTrigger
 } from "@/components/ui/sidebar";
-import { Plane, Car, Upload, BarChart3, Moon, Sun, FileSpreadsheet } from "lucide-react";
+import { Plane, Car, Upload, BarChart3, Moon, Sun, FileSpreadsheet, RefreshCw, Download } from "lucide-react";
 
 /* ── Dark mode hook ─────────────────────────────────────────────────────── */
 function useDarkMode() {
@@ -38,9 +38,38 @@ function useDarkMode() {
   return { dark, toggle: () => setDark((d) => !d) };
 }
 
+interface DbFile {
+  id: number;
+  date: string;
+  filename: string;
+  uploadedAt: string;
+}
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { dark, toggle } = useDarkMode();
+  const [files, setFiles] = useState<DbFile[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchFiles = async () => {
+    try {
+      const res = await fetch("/api/excel/files");
+      if (res.ok) {
+        const data = await res.json();
+        setFiles(data);
+      }
+    } catch (e) {
+      console.error("Error fetching files:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiles();
+    window.addEventListener("excel-imported", fetchFiles);
+    return () => window.removeEventListener("excel-imported", fetchFiles);
+  }, []);
 
   const navigation = [
     { name: "Sevkiyat Paneli", href: "/", icon: Plane },
@@ -79,6 +108,69 @@ export function AppSidebar() {
                 );
               })}
             </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-2 border-t pt-4">
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>Yüklenen Dosyalar</span>
+            <button 
+              onClick={(e) => { e.preventDefault(); fetchFiles(); }} 
+              className="hover:text-foreground text-muted-foreground p-0.5 rounded transition-colors" 
+              title="Yenile"
+            >
+              <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+            </button>
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="px-2 max-h-[250px] overflow-y-auto mt-2">
+            {loading ? (
+              <p className="text-[11px] text-muted-foreground italic px-2">Yükleniyor...</p>
+            ) : files.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground italic px-2">Henüz dosya yüklenmedi.</p>
+            ) : (
+              <div className="space-y-1.5 font-mono text-[11px]">
+                {files.map((file) => {
+                  const displayDate = file.date;
+                  let targetUrlDate = displayDate;
+                  if (displayDate.length === 6 && !displayDate.includes("-")) {
+                    const d = displayDate.slice(0, 2);
+                    const m = displayDate.slice(2, 4);
+                    const y = "20" + displayDate.slice(4, 6);
+                    targetUrlDate = `${y}-${m}-${d}`;
+                  }
+                  
+                  return (
+                    <div 
+                      key={file.id} 
+                      className="group/file flex items-center justify-between p-1.5 rounded hover:bg-sidebar-accent transition-colors cursor-pointer"
+                      onClick={() => window.location.href = `/excel-view?date=${targetUrlDate}`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate max-w-[140px]">
+                        <FileSpreadsheet size={13} className="text-emerald-600 shrink-0" />
+                        <div className="flex flex-col truncate leading-tight">
+                          <span className="font-semibold text-sidebar-foreground group-hover/file:text-blue-500 transition-colors">
+                            {displayDate}
+                          </span>
+                          <span className="text-[9px] text-muted-foreground truncate" title={file.filename}>
+                            {file.filename}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`/api/excel/download?date=${targetUrlDate}`, "_blank");
+                        }}
+                        className="opacity-0 group-hover/file:opacity-100 p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded text-muted-foreground hover:text-emerald-600 transition-all"
+                        title="Excel İndir"
+                      >
+                        <Download size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

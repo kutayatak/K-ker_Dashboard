@@ -594,6 +594,7 @@ export function ImportTasks() {
           const created = result?.created ?? parsedTasks.length;
           const updated = result?.updated ?? 0;
           alert(`İçe aktarma başarılı! ${created} yeni görev eklendi, ${updated} görev güncellendi.`);
+          window.dispatchEvent(new CustomEvent("excel-imported"));
           setParsedTasks([]);
           setFileName(null);
           setParseError(null);
