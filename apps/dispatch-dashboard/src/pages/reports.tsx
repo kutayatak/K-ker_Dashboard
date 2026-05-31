@@ -596,7 +596,7 @@ export function Reports() {
                 onClick={exportToCSV}
                 variant="outline"
                 size="sm"
-                className="shadow-sm border-slate-200"
+                className="shadow-sm border-border dark:border-slate-800"
               >
                 <Download className="w-4 h-4 mr-2" /> Esnaf CSV Aktar
               </Button>
@@ -607,7 +607,7 @@ export function Reports() {
                 onClick={exportTechnicalToCSV}
                 variant="outline"
                 size="sm"
-                className="shadow-sm border-slate-200"
+                className="shadow-sm border-border dark:border-slate-800"
               >
                 <Download className="w-4 h-4 mr-2" /> Teknik CSV Aktar
               </Button>
@@ -1118,7 +1118,7 @@ export function Reports() {
           </div>
 
           {/* ── Esnaf Sefer List Table ── */}
-          <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-2">
+          <Card className="flex-1 overflow-hidden flex flex-col border-border dark:border-slate-800/80 shadow-sm mt-2">
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-auto flex-1 select-none">
               <Table>
@@ -1242,7 +1242,7 @@ export function Reports() {
         <>
 
           {/* ── Teknik İşler Raporu Tablosu ── */}
-          <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-1">
+          <Card className="flex-1 overflow-hidden flex flex-col border-border dark:border-slate-800/80 shadow-sm mt-1">
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-auto flex-1 select-none">
               <Table>

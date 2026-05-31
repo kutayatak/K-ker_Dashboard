@@ -838,7 +838,7 @@ export function ExcelView() {
               ) : (
                 <>
                   <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[8px]"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
                     Bildirilmedi
                   </span>
                   <button
@@ -1230,7 +1230,7 @@ export function ExcelView() {
       <div className="hidden md:flex gap-4 flex-1 min-h-0">
         {/* ── Vehicle Queue Panel ────────────────────────────────────────── */}
         <Card
-          className="flex flex-col shrink-0 border-slate-200/80 shadow-sm overflow-hidden"
+          className="flex flex-col shrink-0 border-border dark:border-slate-800/80 shadow-sm overflow-hidden"
           style={{ width: queueCollapsed ? 44 : 220 }}
         >
           {/* Queue header */}
@@ -1368,19 +1368,19 @@ export function ExcelView() {
         {/* ── Tables column ─────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
           {/* ── Regular tasks table ───────────────────────────────────────── */}
-          <Card className="flex-1 overflow-hidden flex flex-col min-h-0 border-slate-200/80 shadow-sm">
+          <Card className="flex-1 overflow-hidden flex flex-col min-h-0 border-border dark:border-slate-800/80 shadow-sm">
             <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="bg-blue-50 text-blue-700 border-blue-200"
+                  className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800"
                 >
                   GELİR (HAVAALANINA)
                 </Badge>
                 <span className="text-muted-foreground text-xs">&bull;</span>
                 <Badge
                   variant="outline"
-                  className="bg-amber-50 text-amber-700 border-amber-200"
+                  className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
                 >
                   GİDER (HAVAALANINDAN)
                 </Badge>
@@ -1393,25 +1393,25 @@ export function ExcelView() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-blue-200 bg-blue-50/10 text-blue-700 hover:bg-blue-50 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-blue-200 dark:border-blue-900 bg-blue-50/10 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-blue-600" />
+                    <Plus className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                     + Sol Ekle
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 bg-amber-50/10 text-amber-700 hover:bg-amber-50 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 dark:border-amber-900 bg-amber-50/10 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "right", type: "airport_run" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-amber-600" />
+                    <Plus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                     + Sağ Ekle
                   </Button>
                 </div>
@@ -1429,49 +1429,49 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="regular"
                       colIndex={0}
-                      className="bg-blue-500/5 text-blue-700 text-center"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-center"
                     >
                       S.NO
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={1}
-                      className="bg-blue-500/5 text-blue-700 text-left"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-left"
                     >
                       UÇUŞ KODU
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={2}
-                      className="bg-blue-500/5 text-blue-700 text-left"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={3}
-                      className="bg-blue-500/5 text-blue-700 text-center"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={4}
-                      className="bg-blue-500/5 text-blue-700 text-left"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-left"
                     >
                       OTEL ADI / NEREDEN
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={5}
-                      className="bg-blue-500/5 text-blue-700 text-left"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-left"
                     >
                       EKİP (KİŞİ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={6}
-                      className="bg-blue-500/5 text-blue-700 text-center"
+                      className="bg-blue-500/5 text-blue-700 dark:text-blue-400 text-center"
                     >
                       KM
                     </ResizeTh>
@@ -1483,42 +1483,42 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="regular"
                       colIndex={8}
-                      className="bg-amber-500/5 text-amber-700 text-left"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-left"
                     >
                       UÇUŞ KODU
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={9}
-                      className="bg-amber-500/5 text-amber-700 text-left"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={10}
-                      className="bg-amber-500/5 text-amber-700 text-center"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={11}
-                      className="bg-amber-500/5 text-amber-700 text-left"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-left"
                     >
                       OTEL ADI / NEREYE
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={12}
-                      className="bg-amber-500/5 text-amber-700 text-left"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-left"
                     >
                       EKİP (KİŞİ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="regular"
                       colIndex={13}
-                      className="bg-amber-500/5 text-amber-700 text-center"
+                      className="bg-amber-500/5 text-amber-700 dark:text-amber-400 text-center"
                     >
                       KM
                     </ResizeTh>
@@ -1744,19 +1744,19 @@ export function ExcelView() {
           </Card>
 
           {/* ── Extras table ──────────────────────────────────────────────── */}
-          <Card className="overflow-hidden border-slate-200/80 shadow-sm max-h-[240px] flex flex-col shrink-0">
+          <Card className="overflow-hidden border-border dark:border-slate-800/80 shadow-sm max-h-[240px] flex flex-col shrink-0">
             <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="bg-amber-100 text-amber-800 border-amber-300"
+                  className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
                 >
                   EKSTRA GİDER
                 </Badge>
                 <span className="text-muted-foreground text-xs">&bull;</span>
                 <Badge
                   variant="outline"
-                  className="bg-emerald-100 text-emerald-800 border-emerald-300"
+                  className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
                 >
                   EKSTRA GELİR
                 </Badge>
@@ -1769,25 +1769,25 @@ export function ExcelView() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 bg-amber-50/10 text-amber-700 hover:bg-amber-50 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 dark:border-amber-900 bg-amber-50/10 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "left", type: "extra" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-amber-600" />
+                    <Plus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                     + Ekstra Gider Ekle
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-emerald-200 bg-emerald-50/10 text-emerald-700 hover:bg-emerald-50 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-emerald-200 dark:border-emerald-900 bg-emerald-50/10 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "right", type: "extra" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-emerald-600" />
+                    <Plus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                     + Ekstra Gelir Ekle
                   </Button>
                 </div>
@@ -1805,28 +1805,28 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="extra"
                       colIndex={0}
-                      className="bg-amber-500/5 text-amber-800 text-center"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-center"
                     >
                       S.NO
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={1}
-                      className="bg-amber-500/5 text-amber-800 text-center"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={2}
-                      className="bg-amber-500/5 text-amber-800 text-left"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={3}
-                      className="bg-amber-500/5 text-amber-800 text-left"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
                     >
                       OTEL / AÇIKLAMA
                     </ResizeTh>
@@ -1838,21 +1838,21 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="extra"
                       colIndex={5}
-                      className="bg-emerald-500/5 text-emerald-800 text-center"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={6}
-                      className="bg-emerald-500/5 text-emerald-800 text-left"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={7}
-                      className="bg-emerald-500/5 text-emerald-800 text-left"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
                     >
                       OTEL / AÇIKLAMA
                     </ResizeTh>

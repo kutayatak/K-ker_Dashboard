@@ -187,10 +187,26 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border transition-colors duration-200 ease-in-out;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* ── Premium Custom Scrollbar ── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
   }
 }

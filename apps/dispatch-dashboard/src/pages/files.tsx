@@ -132,7 +132,7 @@ export function StoredFiles() {
       </div>
 
       {/* File Explorer list */}
-      <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm min-h-0 bg-card">
+      <Card className="flex-1 overflow-hidden flex flex-col border-border dark:border-slate-800/80 shadow-sm min-h-0 bg-card">
         <div className="p-3 border-b bg-muted/40 font-semibold text-sm flex items-center justify-between shrink-0">
           <span>Veritabanı Dosya Listesi</span>
           <span className="text-xs text-muted-foreground font-mono">Toplam: {files.length} dosya</span>

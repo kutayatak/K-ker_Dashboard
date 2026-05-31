@@ -235,13 +235,13 @@ export function Vehicles() {
                     <h3 className="font-bold text-lg tracking-tight line-clamp-1">{g.baseName}</h3>
                     
                     {/* Miniature Turkish License Plate */}
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 border border-slate-300 rounded font-mono text-xs font-bold bg-white text-slate-800 shadow-sm select-none">
-                      <span className="text-[10px] text-blue-600 font-extrabold border-r border-slate-200 pr-1.5 py-0.5">TR</span>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 border border-slate-300 dark:border-slate-800 rounded font-mono text-xs font-bold bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 shadow-sm select-none">
+                      <span className="text-[10px] text-blue-600 font-extrabold border-r border-slate-200 dark:border-slate-800 pr-1.5 py-0.5">TR</span>
                       {g.basePlate}
                     </div>
                   </div>
 
-                  <Badge variant={g.type === 'fixed' ? 'default' : 'outline'} className={g.type === 'outsource' ? 'border-dashed border-amber-400 text-amber-700 bg-amber-50/50' : 'bg-primary/90 text-primary-foreground'}>
+                  <Badge variant={g.type === 'fixed' ? 'default' : 'outline'} className={g.type === 'outsource' ? 'border-dashed border-amber-400 text-amber-700 bg-amber-50/50 dark:border-amber-500/30 dark:text-amber-300 dark:bg-amber-500/10' : 'bg-primary/90 text-primary-foreground'}>
                     {g.type === 'fixed' ? 'Sabit' : 'Esnaf'}
                   </Badge>
                 </div>

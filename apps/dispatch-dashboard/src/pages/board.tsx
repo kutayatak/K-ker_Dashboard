@@ -1999,7 +1999,7 @@ function TaskCard({
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
-                  <span className="w-3.5 h-3.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[10px]"></span>
+                  <span className="w-3.5 h-3.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px]"></span>
                   Bildirilmedi
                 </span>
               )}
