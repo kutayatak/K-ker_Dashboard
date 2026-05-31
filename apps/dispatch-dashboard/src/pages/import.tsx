@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -8,6 +8,11 @@ import {
   Check,
   ArrowRight,
   User,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Layers,
 } from "lucide-react";
 import { useImportTasks, useCreateVehicle } from "@workspace/api-client-react";
 import * as xlsx from "xlsx";
@@ -420,12 +425,26 @@ function splitTask(task: any): any[] {
   return result;
 }
 
+// ── Bulk import types ─────────────────────────────────────────────────────
+type BulkFileStatus = "pending" | "importing" | "done" | "error";
+interface BulkFileEntry {
+  file: File;
+  date: string;        // YYYY-MM-DD
+  dateAuto: boolean;   // true = auto-detected from filename
+  base64: string;
+  tasks: any[];
+  status: BulkFileStatus;
+  errorMsg?: string;
+  created?: number;
+  updated?: number;
+}
+
 export function ImportTasks() {
   const queryClient = useQueryClient();
   const importMutation = useImportTasks();
   const createVehicleMutation = useCreateVehicle();
 
-  const [importMode, setImportMode] = useState<"tasks" | "vehicles">("tasks");
+  const [importMode, setImportMode] = useState<"tasks" | "vehicles" | "bulk">("tasks");
   const [shiftDate, setShiftDate] = useState<string>(
     () => new Date().toISOString().split("T")[0],
   );
@@ -440,6 +459,12 @@ export function ImportTasks() {
 
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isDatePromptOpen, setIsDatePromptOpen] = useState(false);
+
+  // ── Bulk import state ──────────────────────────────────────────────────
+  const [bulkFiles, setBulkFiles] = useState<BulkFileEntry[]>([]);
+  const [isBulkImporting, setIsBulkImporting] = useState(false);
+  const [bulkDateEditIdx, setBulkDateEditIdx] = useState<number | null>(null);
+  const bulkInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File, targetDate: string) => {
     setUploadedFile(file);
@@ -855,6 +880,183 @@ export function ImportTasks() {
     }
   };
 
+  // ── Parse a single file into a BulkFileEntry ───────────────────────────
+  const parseBulkFile = (file: File, date: string): Promise<BulkFileEntry> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const dataUrl = evt.target?.result as string;
+          const b64 = dataUrl.split(",")[1];
+          const workbook = xlsx.read(b64, { type: "base64", cellStyles: true });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+          // Yellow row detection
+          const rowIsYellow: boolean[] = new Array(rows.length).fill(false);
+          try {
+            const range = xlsx.utils.decode_range(sheet["!ref"] || "A1");
+            const isYellow = (rgb: string) => {
+              const up = rgb.toUpperCase();
+              return up === "FFFF00" || up === "FFFFFF00" || up.endsWith("FFFF00");
+            };
+            for (let r = range.s.r; r <= range.e.r; r++) {
+              const arrIdx = r - range.s.r;
+              if (arrIdx >= rows.length) break;
+              for (let c = range.s.c; c <= Math.min(range.e.c, 13); c++) {
+                const cell = sheet[xlsx.utils.encode_cell({ r, c })];
+                if (!cell?.s) continue;
+                const fg = String(cell.s.fgColor?.rgb ?? "");
+                const bg = String(cell.s.bgColor?.rgb ?? "");
+                if (isYellow(fg) || isYellow(bg)) { rowIsYellow[arrIdx] = true; break; }
+              }
+            }
+          } catch (_) { /* Style unsupported */ }
+
+          const tasks: any[] = [];
+          let currentSection: "regular" | "ekstra" = "regular";
+          let lastTimeMinutesLeft = -1, dateOffsetLeft = 0;
+          let lastTimeMinutesRight = -1, dateOffsetRight = 0;
+
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.every((c) => c == null || c === "")) continue;
+            const colAVal = row[0];
+            const colAStr = colAVal != null ? String(colAVal).trim() : "";
+            const colAIsNumeric = colAStr !== "" && !isNaN(Number(colAStr)) && Number(colAStr) >= 1;
+
+            if (!colAIsNumeric) {
+              const rowText = row.map((c) => String(c || "")).join(" ").toLowerCase();
+              if ((rowText.includes("ekstra") || rowText.includes("ekst.")) && currentSection !== "ekstra") {
+                currentSection = "ekstra";
+                lastTimeMinutesLeft = -1; dateOffsetLeft = 0;
+                lastTimeMinutesRight = -1; dateOffsetRight = 0;
+              }
+              continue;
+            }
+
+            if (colAStr === "1" && i > 10 && currentSection === "regular") {
+              if (!isValidValue(row[4]) && isValidValue(row[3])) {
+                currentSection = "ekstra";
+                lastTimeMinutesLeft = -1; dateOffsetLeft = 0;
+                lastTimeMinutesRight = -1; dateOffsetRight = 0;
+              }
+            }
+
+            if (currentSection === "regular") {
+              const tmL = getTimeMinutes(row[3]);
+              if (tmL !== null) { if (lastTimeMinutesLeft !== -1 && tmL < lastTimeMinutesLeft) dateOffsetLeft = 1; lastTimeMinutesLeft = tmL; }
+              const lTask = buildRegularTask(row, i + 1, "left", date, dateOffsetLeft);
+              if (lTask) tasks.push(...splitTask(lTask));
+              const tmR = getTimeMinutes(row[9]);
+              if (tmR !== null) { if (lastTimeMinutesRight !== -1 && tmR < lastTimeMinutesRight) dateOffsetRight = 1; lastTimeMinutesRight = tmR; }
+              const rTask = buildRegularTask(row, i + 1, "right", date, dateOffsetRight);
+              if (rTask) tasks.push(...splitTask(rTask));
+            } else {
+              const tmL = getTimeMinutes(row[1]);
+              if (tmL !== null) { if (lastTimeMinutesLeft !== -1 && tmL < lastTimeMinutesLeft) dateOffsetLeft = 1; lastTimeMinutesLeft = tmL; }
+              const lTask = buildEkstraTask(row, i + 1, "left", date, dateOffsetLeft, rowIsYellow[i]);
+              if (lTask) tasks.push(...splitTask(lTask));
+              const tmR = getTimeMinutes(row[7]);
+              if (tmR !== null) { if (lastTimeMinutesRight !== -1 && tmR < lastTimeMinutesRight) dateOffsetRight = 1; lastTimeMinutesRight = tmR; }
+              const rTask = buildEkstraTask(row, i + 1, "right", date, dateOffsetRight, rowIsYellow[i]);
+              if (rTask) tasks.push(...splitTask(rTask));
+            }
+          }
+
+          resolve({ file, date, dateAuto: true, base64: b64, tasks, status: "pending" });
+        } catch (err: any) {
+          resolve({ file, date, dateAuto: true, base64: "", tasks: [], status: "error", errorMsg: err?.message || String(err) });
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ── Handle multi-file selection for bulk mode ──────────────────────────
+  const handleBulkFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    // Reset
+    setBulkFiles([]);
+    setIsBulkImporting(false);
+
+    const entries: BulkFileEntry[] = await Promise.all(
+      files.map(async (file) => {
+        const detectedDate = extractDateFromFilename(file.name);
+        const date = detectedDate ?? new Date().toISOString().split("T")[0];
+        const entry = await parseBulkFile(file, date);
+        return { ...entry, dateAuto: !!detectedDate };
+      })
+    );
+    // Sort by date ascending
+    entries.sort((a, b) => a.date.localeCompare(b.date));
+    setBulkFiles(entries);
+    // Reset input so same files can be re-selected
+    if (bulkInputRef.current) bulkInputRef.current.value = "";
+  };
+
+  // ── Import all bulk files sequentially ────────────────────────────────
+  const handleBulkImportAll = async () => {
+    if (isBulkImporting) return;
+    setIsBulkImporting(true);
+
+    for (let i = 0; i < bulkFiles.length; i++) {
+      const entry = bulkFiles[i];
+      if (entry.status === "done") continue; // skip already done
+      if (entry.tasks.length === 0) {
+        setBulkFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: "error", errorMsg: "Görev bulunamadı" } : f));
+        continue;
+      }
+
+      // Mark as importing
+      setBulkFiles((prev) => prev.map((f, idx) => idx === i ? { ...f, status: "importing" } : f));
+
+      try {
+        // Step 1: Upload Excel file
+        if (entry.base64) {
+          await fetch("/api/excel/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: entry.date, filename: entry.file.name, data: entry.base64 }),
+          }).catch(() => {}); // non-fatal
+        }
+
+        // Step 2: Import tasks
+        const res = await fetch("/api/tasks/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tasks: entry.tasks,
+            excelDate: entry.date,
+            excelFilename: entry.file.name,
+          }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData?.error || `HTTP ${res.status}`);
+        }
+
+        const result = await res.json();
+        setBulkFiles((prev) => prev.map((f, idx) => idx === i
+          ? { ...f, status: "done", created: result.created ?? entry.tasks.length, updated: result.updated ?? 0 }
+          : f
+        ));
+      } catch (err: any) {
+        setBulkFiles((prev) => prev.map((f, idx) => idx === i
+          ? { ...f, status: "error", errorMsg: err?.message || "Bilinmeyen hata" }
+          : f
+        ));
+      }
+    }
+
+    setIsBulkImporting(false);
+    queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    window.dispatchEvent(new CustomEvent("excel-imported"));
+  };
+
   const handleConfirmTasks = async () => {
     if (parsedTasks.length === 0) return;
 
@@ -1010,10 +1212,177 @@ export function ImportTasks() {
           >
             Araç & Şoför İçe Aktar
           </Button>
+          <Button
+            variant={importMode === "bulk" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              setImportMode("bulk");
+              setFileName(null);
+              setUploadedFile(null);
+              setParsedTasks([]);
+              setParsedVehicles([]);
+              setParseError(null);
+              setBulkFiles([]);
+            }}
+            className="flex items-center gap-1.5"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            Toplu Import
+          </Button>
         </div>
       </div>
 
-      {!fileName ? (
+      {importMode === "bulk" ? (
+        /* ── BULK IMPORT UI ─────────────────────────────────────────────── */
+        <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+          {/* Drop zone / file selector */}
+          {bulkFiles.length === 0 ? (
+            <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center bg-muted/20 flex-1 max-h-[360px]">
+              <div className="w-16 h-16 rounded-full bg-violet-100 dark:bg-violet-950/30 flex items-center justify-center text-violet-600 mb-4">
+                <Layers size={28} />
+              </div>
+              <h3 className="font-semibold text-lg mb-1">Toplu Excel Import</h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                Birden fazla .xlsx dosyası seçin — her biri sırayla import edilir
+              </p>
+              <p className="text-xs text-muted-foreground mb-6">
+                Tarih dosya adından otomatik algılanır. Algılanamayan dosyalar için elle giriş yapılabilir.
+              </p>
+              <label className="cursor-pointer">
+                <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
+                  <span>Dosyaları Seç</span>
+                </Button>
+                <input
+                  ref={bulkInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".xlsx, .xls"
+                  multiple
+                  onChange={handleBulkFileSelect}
+                />
+              </label>
+            </Card>
+          ) : (
+            <>
+              {/* Header bar */}
+              <div className="flex items-center justify-between shrink-0 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-semibold">
+                    {bulkFiles.length} dosya seçildi
+                  </span>
+                  <div className="flex gap-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {bulkFiles.reduce((s, f) => s + f.tasks.length, 0)} toplam görev
+                    </Badge>
+                    {bulkFiles.some((f) => !f.dateAuto) && (
+                      <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                        ⚠ Bazı tarihler tespit edilemedi
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <label className="cursor-pointer">
+                    <Button variant="outline" size="sm" asChild>
+                      <span>Farklı Dosyalar Seç</span>
+                    </Button>
+                    <input
+                      ref={bulkInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx, .xls"
+                      multiple
+                      onChange={handleBulkFileSelect}
+                    />
+                  </label>
+                  <Button
+                    size="sm"
+                    className="bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={handleBulkImportAll}
+                    disabled={
+                      isBulkImporting ||
+                      bulkFiles.every((f) => f.status === "done")
+                    }
+                  >
+                    {isBulkImporting ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" />İçe Aktarılıyor...</>
+                    ) : bulkFiles.every((f) => f.status === "done") ? (
+                      <><CheckCircle2 className="w-4 h-4 mr-2" />Tümü Tamamlandı</>
+                    ) : (
+                      <><Check className="w-4 h-4 mr-2" />Tümünü İçe Aktar</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* File list */}
+              <Card className="flex-1 overflow-auto">
+                <div className="divide-y">
+                  {bulkFiles.map((entry, idx) => (
+                    <div key={idx} className={`p-4 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors ${
+                      entry.status === "done" ? "bg-emerald-50/40 dark:bg-emerald-950/10" :
+                      entry.status === "error" ? "bg-rose-50/40 dark:bg-rose-950/10" :
+                      entry.status === "importing" ? "bg-violet-50/40 dark:bg-violet-950/10" : ""
+                    }`}>
+                      {/* Status icon */}
+                      <div className="shrink-0">
+                        {entry.status === "done" && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                        {entry.status === "error" && <AlertCircle className="w-5 h-5 text-rose-500" />}
+                        {entry.status === "importing" && <Loader2 className="w-5 h-5 text-violet-500 animate-spin" />}
+                        {entry.status === "pending" && <Clock className="w-5 h-5 text-muted-foreground" />}
+                      </div>
+
+                      {/* File info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{entry.file.name}</div>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <Badge variant="secondary" className="text-xs font-mono">
+                            {entry.tasks.length} görev
+                          </Badge>
+                          {entry.status === "done" && (
+                            <span className="text-xs text-emerald-600">
+                              +{entry.created ?? 0} eklendi, {entry.updated ?? 0} güncellendi
+                            </span>
+                          )}
+                          {entry.status === "error" && (
+                            <span className="text-xs text-rose-600">{entry.errorMsg}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Date field — editable */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!entry.dateAuto && entry.status === "pending" && (
+                          <span className="text-[10px] text-amber-600 font-semibold">Tarih tespit edilemedi</span>
+                        )}
+                        <input
+                          type="date"
+                          className={`rounded-md border px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring ${
+                            !entry.dateAuto && entry.status === "pending"
+                              ? "border-amber-400 bg-amber-50 dark:bg-amber-950/20"
+                              : "border-input bg-card"
+                          }`}
+                          value={entry.date}
+                          disabled={entry.status === "done" || entry.status === "importing"}
+                          onChange={async (e) => {
+                            const newDate = e.target.value;
+                            if (!newDate) return;
+                            // Re-parse with new date
+                            const reparsed = await parseBulkFile(entry.file, newDate);
+                            setBulkFiles((prev) => prev.map((f, i) =>
+                              i === idx ? { ...reparsed, dateAuto: true } : f
+                            ));
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
+      ) : !fileName ? (
         <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center bg-muted/20 flex-1 max-h-[400px]">
           <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-4">
             <Upload size={24} />
