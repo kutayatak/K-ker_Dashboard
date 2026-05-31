@@ -5,6 +5,7 @@ import {
   useListTasks,
   useListVehicles,
   useUpdateTask,
+  useDeleteTask,
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -72,6 +73,8 @@ export function Reports() {
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [retypeTask, setRetypeTask] = useState<any | null>(null); // task pending retype confirm
+  const [taskToDelete, setTaskToDelete] = useState<any | null>(null);
+  const [confirmDeleteCheckbox, setConfirmDeleteCheckbox] = useState(false);
   const [platesToDelete, setPlatesToDelete] = useState<string[]>([]);
   const [confirmCheckbox, setConfirmCheckbox] = useState(false);
   const [cleanupMode, setCleanupMode] = useState(false);
@@ -143,6 +146,7 @@ export function Reports() {
 
   const queryClient = useQueryClient();
   const updateTaskMutation = useUpdateTask();
+  const deleteTaskMutation = useDeleteTask();
 
   // Fetch detailed accounting records
   const {
@@ -1349,16 +1353,29 @@ export function Reports() {
                               </Badge>
                             )}
                           </TableCell>
-                          {/* ── Retype action ── */}
+                          {/* ── Actions (Retype & Delete) ── */}
                           <TableCell className="text-xs">
-                            <button
-                              title="Ekstraya taşı"
-                              onClick={() => setRetypeTask({ ...t, extraDest })}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40 transition-colors"
-                            >
-                              <ArrowRightLeft className="w-3 h-3" />
-                              Ekstraya Taşı
-                            </button>
+                            <div className="flex gap-2 items-center">
+                              <button
+                                title="Ekstraya taşı"
+                                onClick={() => setRetypeTask({ ...t, extraDest })}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40 transition-colors shrink-0"
+                              >
+                                <ArrowRightLeft className="w-3 h-3" />
+                                Ekstraya Taşı
+                              </button>
+                              <button
+                                title="Görevi sil"
+                                onClick={() => {
+                                  setTaskToDelete(t);
+                                  setConfirmDeleteCheckbox(false);
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/20 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Sil
+                              </button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -1513,6 +1530,90 @@ export function Reports() {
               }}
             >
               Evet, Gizle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Technical Task Delete Confirm Dialog ─────────────────────────── */}
+      <Dialog
+        open={!!taskToDelete}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTaskToDelete(null);
+          } else {
+            setConfirmDeleteCheckbox(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-red-600" />
+              Teknik Görevi Sil
+            </DialogTitle>
+          </DialogHeader>
+          {taskToDelete && (
+            <div className="py-2 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Bu teknik görevi sistemden <span className="font-bold text-red-600 dark:text-red-400">kalıcı olarak silmek</span> istediğinize emin misiniz? Bu işlem geri alınamaz.
+              </p>
+              
+              <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+                <div className="font-semibold truncate">{taskToDelete.pickupLocation}</div>
+                <div className="text-xs text-muted-foreground">
+                  {format(new Date(taskToDelete.scheduledTime), "dd MMMM yyyy", { locale: tr })}{" "}
+                  {utcTime(taskToDelete.scheduledTime)}
+                </div>
+                {taskToDelete.vehicleName && (
+                  <div className="text-xs font-mono text-primary font-bold">
+                    Plaka: {taskToDelete.vehicleName}
+                  </div>
+                )}
+                {taskToDelete.notes && (
+                  <div className="text-xs text-muted-foreground italic truncate">
+                    Açıklama: {taskToDelete.notes}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex items-center space-x-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Checkbox
+                  id="confirm-task-delete-checkbox"
+                  checked={confirmDeleteCheckbox}
+                  onCheckedChange={(checked) => setConfirmDeleteCheckbox(!!checked)}
+                />
+                <Label
+                  htmlFor="confirm-task-delete-checkbox"
+                  className="text-xs font-semibold text-foreground cursor-pointer select-none leading-none"
+                >
+                  Bu teknik görevi kalıcı olarak silmek istediğimi onaylıyorum
+                </Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setTaskToDelete(null)}>
+              Vazgeç
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50"
+              disabled={!confirmDeleteCheckbox || deleteTaskMutation.isPending}
+              onClick={() => {
+                if (taskToDelete && confirmDeleteCheckbox) {
+                  deleteTaskMutation.mutate(
+                    { id: taskToDelete.id },
+                    {
+                      onSuccess: () => {
+                        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+                        setTaskToDelete(null);
+                      },
+                    },
+                  );
+                }
+              }}
+            >
+              {deleteTaskMutation.isPending ? "Siliniyor..." : "Evet, Görevi Sil"}
             </Button>
           </DialogFooter>
         </DialogContent>
