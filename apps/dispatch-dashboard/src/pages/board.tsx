@@ -1695,11 +1695,13 @@ function TaskCard({
   showCancelledColor?: boolean;
   fullWidth?: boolean;
 }) {
-  const scheduledDate = new Date(task.scheduledTime);
-  const createdDate = new Date(task.createdAt);
-  const diffMs = scheduledDate.getTime() - createdDate.getTime();
   const isDelayed =
-    diffMs > 2 * 60 * 1000 && !!task.flightCode && task.type !== "hotel_pickup";
+    !!task.flightCode &&
+    task.type !== "hotel_pickup" &&
+    task.status !== "completed" &&
+    task.status !== "cancelled" &&
+    !!task.notes &&
+    (task.notes.includes("Rötar") || task.notes.toLowerCase().includes("delay"));
 
   const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
   const isNotified = task.status === "assigned";

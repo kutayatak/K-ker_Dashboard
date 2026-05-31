@@ -93,9 +93,19 @@ async function runFlightCheck() {
     // Only update if time actually changed by more than 1 minute
     if (Math.abs(updatedTime.getTime() - previousTime.getTime()) < 60000) continue;
 
+    let updatedNotes = task.notes;
+    if (!task.notes) {
+      updatedNotes = `Rötar: +${flightData.delayMinutes} dk`;
+    } else if (!task.notes.includes("Rötar")) {
+      updatedNotes = `${task.notes} | Rötar: +${flightData.delayMinutes} dk`;
+    }
+
     await db
       .update(tasksTable)
-      .set({ scheduledTime: updatedTime })
+      .set({ 
+        scheduledTime: updatedTime,
+        notes: updatedNotes
+      })
       .where(sql`${tasksTable.id} = ${task.id}`);
 
     updates.push({
