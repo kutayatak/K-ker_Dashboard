@@ -517,23 +517,17 @@ export function ImportTasks() {
             // ── Non-data row: section-header detection ───────────────────────
             if (!colAIsNumeric) {
               // Only examine header/separator rows for section keywords.
-              // Using column-A text first (most reliable), then full row text.
-              const colALower = colAStr.toLowerCase();
+              // Now that we guard on colAIsNumeric, data rows with "ekstra"
+              // in their hotel name, notes, etc. can never trigger this path.
               const rowText = row
                 .map((c) => String(c || ""))
                 .join(" ")
                 .toLowerCase();
 
-              const isEkstraHeader =
-                colALower.includes("ekstra") ||
-                colALower.includes("ekst.") ||
-                // Fallback: "EKSTRALAR" could be in another column on a header row
-                (rowText.includes("ekstra") &&
-                  // Confirm it's really a header: no valid regular-section columns
-                  !isValidValue(row[1]) &&
-                  !isValidValue(row[4]));
-
-              if (isEkstraHeader && currentSection !== "ekstra") {
+              if (
+                (rowText.includes("ekstra") || rowText.includes("ekst.")) &&
+                currentSection !== "ekstra"
+              ) {
                 currentSection = "ekstra";
                 lastTimeMinutesLeft = -1;
                 dateOffsetLeft = 0;
@@ -545,25 +539,23 @@ export function ImportTasks() {
               continue;
             }
 
-            // ── Data row: S.NO=1 ekstra heuristic ───────────────────────────
-            // Detects the first data row of the ekstra section when there is no
-            // explicit "EKSTRALAR" header row. Requires ALL THREE conditions so
-            // that a regular row missing just one field doesn't false-trigger.
+            // ── Data row: S.NO=1 ekstra section heuristic ───────────────────
+            // Detects the ekstra section's first data row when there is no
+            // explicit "EKSTRALAR" header row.
+            //
+            // Column layout comparison:
+            //   Regular: A=S.NO, B=flight, C=plate, D=time,  E=hotel, F=crew
+            //   Ekstra:  A=S.NO, B=time,   C=plate, D=desc,  E=empty, F=empty
+            //
+            // The ONLY reliable signal is: E (hotel) is empty AND D has a value.
+            // We do NOT check B (flight) because in ekstra layout B = time, which
+            // is a valid numeric fraction — isValidValue would return true, making
+            // "noFlightInColB" always false and the heuristic never trigger.
             if (colAStr === "1" && i > 10 && currentSection === "regular") {
-              const noCrewInColF = !isValidValue(row[5]);
-              const noFlightInColB = !isValidValue(row[1]);
               const noHotelInColE = !isValidValue(row[4]);
               const hasDescInColD = isValidValue(row[3]);
 
-              // In the ekstra layout: B=time, C=plate, D=description, E=empty
-              // In the regular layout: B=flight, C=plate, D=time, E=hotel, F=crew
-              // So ekstra rows uniquely have: no flight (B), no hotel (E), has desc (D)
-              if (
-                noFlightInColB &&
-                noHotelInColE &&
-                hasDescInColD &&
-                noCrewInColF
-              ) {
+              if (noHotelInColE && hasDescInColD) {
                 currentSection = "ekstra";
                 lastTimeMinutesLeft = -1;
                 dateOffsetLeft = 0;
