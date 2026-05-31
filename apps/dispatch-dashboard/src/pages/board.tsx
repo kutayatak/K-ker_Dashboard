@@ -777,34 +777,39 @@ export function Board() {
             <Download className="w-3.5 h-3.5 mr-1" />
             <span className="hidden md:inline">İndir</span>
           </Button>
-
-          {/* KM Girişi toggle — desktop only (mobile uses tab bar) */}
-          <Button
-            size="sm"
-            variant={activeTab === "km" ? "default" : "outline"}
-            className={`hidden md:flex h-7 px-2 text-xs ml-1 items-center gap-1 ${
-              activeTab === "km"
-                ? "bg-violet-600 hover:bg-violet-700 text-white border-violet-600"
-                : "border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-950/30"
-            }`}
-            onClick={() =>
-              setActiveTab((prev) => (prev === "km" ? "gelir" : "km"))
-            }
-          >
-            <span>KM Girişi</span>
-            {kmGroups.length > 0 && (
-              <span
-                className={`inline-flex items-center justify-center min-w-[16px] h-[16px] rounded-full text-[10px] font-mono px-1 ${
-                  activeTab === "km"
-                    ? "bg-white/20 text-white"
-                    : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
-                }`}
-              >
-                {kmGroups.length}
-              </span>
-            )}
-          </Button>
         </div>
+      </div>
+
+      {/* ── KM Girişi toggle bar — always visible ─────────────────────── */}
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          onClick={() =>
+            setActiveTab((prev) => (prev === "km" ? "gelir" : "km"))
+          }
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all ${
+            activeTab === "km"
+              ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+              : "bg-white dark:bg-slate-900 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+          }`}
+        >
+          <span>KM Girişi</span>
+          {kmGroups.length > 0 && (
+            <span
+              className={`inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-mono px-1 ${
+                activeTab === "km"
+                  ? "bg-white/20 text-white"
+                  : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+              }`}
+            >
+              {kmGroups.length}
+            </span>
+          )}
+        </button>
+        {activeTab === "km" && (
+          <span className="text-xs text-muted-foreground">
+            KM eksik rotalar — bir kez girin, tüm eşleşen görevlere uygulanır
+          </span>
+        )}
       </div>
 
       {/* ── Mobile tab bar ───────────────────────────────────────────── */}
