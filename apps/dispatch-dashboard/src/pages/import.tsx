@@ -30,7 +30,7 @@ function extractDateFromFilename(name: string): string | null {
   }
 
   // 2. Standard D.M.YYYY or D-M-YYYY or D_M_YYYY (e.g. "30.05.2026", "30.5.2026", "30-5-26", "3.5.26")
-  const dmyMatch = clean.match(/\b([1-9]|0[1-9]|[12]\\d|3[01])[-._]([1-9]|0[1-9]|1[0-2])[-._](20\d{2}|\d{2})\b/);
+  const dmyMatch = clean.match(/\b([1-9]|0[1-9]|[12]\d|3[01])[-._]([1-9]|0[1-9]|1[0-2])[-._](20\d{2}|\d{2})\b/);
   if (dmyMatch) {
     const d = String(dmyMatch[1]).padStart(2, "0");
     const m = String(dmyMatch[2]).padStart(2, "0");
@@ -40,7 +40,7 @@ function extractDateFromFilename(name: string): string | null {
   }
 
   // 3. YYYY.MM.DD or YYYY-MM-DD (e.g. "2026.05.30", "2026-05-30")
-  const ymdMatch = clean.match(/\b(20\d{2})[-._]([1-9]|0[1-9]|1[0-2])[-._]([1-9]|0[1-9]|[12]\\d|3[01])\b/);
+  const ymdMatch = clean.match(/\b(20\d{2})[-._]([1-9]|0[1-9]|1[0-2])[-._]([1-9]|0[1-9]|[12]\d|3[01])\b/);
   if (ymdMatch) {
     const y = ymdMatch[1];
     const m = String(ymdMatch[2]).padStart(2, "0");
@@ -49,7 +49,7 @@ function extractDateFromFilename(name: string): string | null {
   }
 
   // 4. Digits fallback (e.g. "30052026", "20260530")
-  const digitsMatch1 = clean.match(/\b([1-9]|0[1-9]|[12]\\d|3[01])(0[1-9]|1[0-2])(20\d{2})\b/);
+  const digitsMatch1 = clean.match(/\b([1-9]|0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(20\d{2})\b/);
   if (digitsMatch1) {
     const d = String(digitsMatch1[1]).padStart(2, "0");
     const m = String(digitsMatch1[2]).padStart(2, "0");
@@ -57,7 +57,7 @@ function extractDateFromFilename(name: string): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  const digitsMatch2 = clean.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])\b/);
+  const digitsMatch2 = clean.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
   if (digitsMatch2) {
     const y = digitsMatch2[1];
     const m = String(digitsMatch2[2]).padStart(2, "0");
