@@ -135,7 +135,7 @@ export function AppSidebar() {
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex w-full h-screen overflow-hidden">
+    <div className="flex w-full overflow-hidden" style={{ height: '100vh', maxHeight: '-webkit-fill-available' }}>
       <AppSidebar />
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-background">
         <header className="h-14 border-b bg-card flex items-center justify-between px-4 shrink-0 md:hidden">
