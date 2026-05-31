@@ -6,6 +6,21 @@ import { useImportTasks, useCreateVehicle } from "@workspace/api-client-react";
 import * as xlsx from "xlsx";
 import { Badge } from "@/components/ui/badge";
 import { useQueryClient } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+// Try to extract Date (YYYY-MM-DD) from filename
+function extractDateFromFilename(name: string): string | null {
+  const baseName = name.substring(0, name.lastIndexOf(".")) || name;
+  const ymdMatch = baseName.match(/\b(20\d{2})[-._](0[1-9]|1[0-2])[-._](0[1-9]|[12]\d|3[01])\b/);
+  if (ymdMatch) return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+  const dmyMatch = baseName.match(/\b(0[1-9]|[12]\d|3[01])[-._](0[1-9]|1[0-2])[-._](20\d{2})\b/);
+  if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`;
+  const ymdDigits = baseName.match(/\b(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\b/);
+  if (ymdDigits) return `${ymdDigits[1]}-${ymdDigits[2]}-${ymdDigits[3]}`;
+  const dmyDigits = baseName.match(/\b(0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(20\d{2})\b/);
+  if (dmyDigits) return `${dmyDigits[3]}-${dmyDigits[2]}-${dmyDigits[1]}`;
+  return null;
+}
 
 // Excel serial time (0..1) → "HH:MM" string
 function excelTimeToHHMM(serial: number): string {
@@ -239,10 +254,10 @@ export function ImportTasks() {
 
   const [excelBase64, setExcelBase64] = useState<string | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [isDatePromptOpen, setIsDatePromptOpen] = useState(false);
 
+  const processFile = (file: File, targetDate: string) => {
     setFileName(file.name);
     setParseError(null);
     const reader = new FileReader();
@@ -300,7 +315,7 @@ export function ImportTasks() {
                 lastTimeMinutesLeft = timeMinutesLeft;
               }
 
-              const leftTask = buildRegularTask(row, i + 1, "left", shiftDate, dateOffsetLeft);
+              const leftTask = buildRegularTask(row, i + 1, "left", targetDate, dateOffsetLeft);
               if (leftTask) tasks.push(...splitTask(leftTask));
 
               const timeMinutesRight = getTimeMinutes(row[9]);
@@ -311,7 +326,7 @@ export function ImportTasks() {
                 lastTimeMinutesRight = timeMinutesRight;
               }
 
-              const rightTask = buildRegularTask(row, i + 1, "right", shiftDate, dateOffsetRight);
+              const rightTask = buildRegularTask(row, i + 1, "right", targetDate, dateOffsetRight);
               if (rightTask) tasks.push(...splitTask(rightTask));
             } else {
               const timeMinutesLeft = getTimeMinutes(row[1]);
@@ -322,7 +337,7 @@ export function ImportTasks() {
                 lastTimeMinutesLeft = timeMinutesLeft;
               }
 
-              const leftTask = buildEkstraTask(row, i + 1, "left", shiftDate, dateOffsetLeft);
+              const leftTask = buildEkstraTask(row, i + 1, "left", targetDate, dateOffsetLeft);
               if (leftTask) tasks.push(...splitTask(leftTask));
 
               const timeMinutesRight = getTimeMinutes(row[7]);
@@ -333,7 +348,7 @@ export function ImportTasks() {
                 lastTimeMinutesRight = timeMinutesRight;
               }
 
-              const rightTask = buildEkstraTask(row, i + 1, "right", shiftDate, dateOffsetRight);
+              const rightTask = buildEkstraTask(row, i + 1, "right", targetDate, dateOffsetRight);
               if (rightTask) tasks.push(...splitTask(rightTask));
             }
           }
@@ -493,6 +508,27 @@ export function ImportTasks() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setParseError(null);
+
+    if (importMode === "tasks") {
+      const extracted = extractDateFromFilename(file.name);
+      if (extracted) {
+        setShiftDate(extracted);
+        processFile(file, extracted);
+      } else {
+        setPendingFile(file);
+        setIsDatePromptOpen(true);
+      }
+    } else {
+      processFile(file, shiftDate);
+    }
   };
 
   const handleConfirmTasks = () => {
@@ -737,6 +773,51 @@ export function ImportTasks() {
           )}
         </div>
       )}
+
+      {/* Date Prompt Dialog */}
+      <Dialog open={isDatePromptOpen} onOpenChange={setIsDatePromptOpen}>
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle>Vardiya Tarihi Seçin</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Yüklediğiniz Excel dosyasının isminden vardiya tarihi otomatik olarak tespit edilemedi. Lütfen bu dosyadaki görevlerin hangi tarihe ait olduğunu seçin:
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tarih</label>
+              <input
+                type="date"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={shiftDate}
+                onChange={(e) => setShiftDate(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsDatePromptOpen(false);
+                  setPendingFile(null);
+                  setFileName(null);
+                }}
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={() => {
+                  if (pendingFile) {
+                    processFile(pendingFile, shiftDate);
+                  }
+                  setIsDatePromptOpen(false);
+                }}
+              >
+                Devam Et
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
