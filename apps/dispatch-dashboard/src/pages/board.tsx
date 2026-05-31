@@ -180,12 +180,7 @@ export function Board() {
         if (!t?.scheduledTime) continue;
         const d = new Date(t.scheduledTime);
         if (isNaN(d.getTime())) continue;
-        const hours = d.getHours();
-        const shiftDate = new Date(d);
-        if (hours < 6) {
-          shiftDate.setDate(shiftDate.getDate() - 1);
-        }
-        const key = `${shiftDate.getFullYear()}-${String(shiftDate.getMonth() + 1).padStart(2, "0")}-${String(shiftDate.getDate()).padStart(2, "0")}`;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         const prev = byDate.get(key);
         const isActive = t.status !== "completed" && t.status !== "cancelled";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
@@ -207,15 +202,11 @@ export function Board() {
     uncompleted: uncompletedDays,
   };
 
-  // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
-  const shiftStart = new Date(selectedDate);
-  shiftStart.setHours(6, 0, 0, 0);
-  const shiftEnd = new Date(shiftStart);
-  shiftEnd.setDate(shiftEnd.getDate() + 1);
-
+  // Filter tasks within the 24-hour calendar window (D 00:00 to D 23:59)
   const dayTasks = tasks.filter((t) => {
     const time = new Date(t.scheduledTime);
-    return time >= shiftStart && time < shiftEnd;
+    const dateStr = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, "0")}-${String(time.getDate()).padStart(2, "0")}`;
+    return dateStr === selectedDate;
   });
 
   const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
