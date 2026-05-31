@@ -224,10 +224,8 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     const byDate = new Map<string, { hasActive: boolean }>();
     if (Array.isArray(tasks)) {
       for (const t of tasks as any[]) {
-        if (!t?.scheduledTime) continue;
-        const d = new Date(t.scheduledTime);
-        if (isNaN(d.getTime())) continue;
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        if (!t?.scheduledTime || t.scheduledTime.length < 10) continue;
+        const key = t.scheduledTime.substring(0, 10);
         const prev = byDate.get(key);
         const isActive = t.status !== "completed" && t.status !== "cancelled";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
@@ -249,10 +247,10 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     uncompleted: uncompletedDays,
   };
 
-  // Filter tasks within the 24-hour calendar window (D 00:00 to D 23:59)
+  // Filter tasks within the calendar window using stable UTC date part matching
   const dayTasks = tasks.filter((t) => {
-    const time = new Date(t.scheduledTime);
-    const dateStr = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, "0")}-${String(time.getDate()).padStart(2, "0")}`;
+    if (!t?.scheduledTime || t.scheduledTime.length < 10) return false;
+    const dateStr = t.scheduledTime.substring(0, 10);
     return dateStr === selectedDate;
   });
 
@@ -502,9 +500,14 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
   const handleOpenEdit = (task: Task) => {
     setEditingTask(task);
     const dt = new Date(task.scheduledTime);
-    const local = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}T${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+    const yyyy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getUTCDate()).padStart(2, "0");
+    const hh = String(dt.getUTCHours()).padStart(2, "0");
+    const min = String(dt.getUTCMinutes()).padStart(2, "0");
+    const utcFormatted = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
     setEditForm({
-      scheduledTime: local,
+      scheduledTime: utcFormatted,
       pickupLocation: task.pickupLocation ?? "",
       dropoffLocation: task.dropoffLocation ?? "",
       flightCode: task.flightCode ?? "",
@@ -522,7 +525,7 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         id: editingTask.id,
         data: {
           scheduledTime: editForm.scheduledTime
-            ? new Date(editForm.scheduledTime).toISOString()
+            ? new Date(editForm.scheduledTime + "Z").toISOString()
             : undefined,
           pickupLocation: editForm.pickupLocation || undefined,
           dropoffLocation: editForm.dropoffLocation || undefined,
