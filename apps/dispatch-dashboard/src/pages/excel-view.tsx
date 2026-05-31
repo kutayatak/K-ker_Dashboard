@@ -24,6 +24,8 @@ import {
   Users,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -450,6 +452,83 @@ export function ExcelView() {
   const maxExtraRows = Math.max(leftExtras.length, rightExtras.length);
 
   // ── In-line task updates ────────────────────────────────────────────────
+
+  // ── Double-click edit state ─────────────────────────────────────────────
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editForm, setEditForm] = useState<{
+    flightCode: string;
+    time: string; // HH:mm in UTC
+    notes: string;
+    km: string;
+  }>({ flightCode: "", time: "", notes: "", km: "" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const openEdit = (task: Task) => {
+    setEditingTask(task);
+    // notes: strip the "| Plaka: xxx" suffix for display, keep crew info
+    let displayNotes = task.notes ?? "";
+    if (displayNotes.includes(" | Plaka:")) {
+      displayNotes = displayNotes.split(" | Plaka:")[0];
+    }
+    setEditForm({
+      flightCode: task.flightCode ?? "",
+      time: utcTime(task.scheduledTime), // HH:mm already UTC
+      notes: displayNotes,
+      km:
+        (task as ExtendedTask).km != null
+          ? String(Number((task as ExtendedTask).km))
+          : "",
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editingTask) return;
+    setEditSaving(true);
+    try {
+      // Build new scheduledTime: keep the UTC date, replace HH:mm
+      const [hh, mm] = editForm.time.split(":").map(Number);
+      const baseDateUTC = editingTask.scheduledTime.substring(0, 10); // YYYY-MM-DD
+      const newScheduledTime = `${baseDateUTC}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00.000Z`;
+
+      // Preserve plate notes, update crew notes part
+      let existingNotes = editingTask.notes ?? "";
+      const plateSection = existingNotes.includes(" | Plaka:")
+        ? " | Plaka:" + existingNotes.split(" | Plaka:")[1]
+        : "";
+      const newNotes = editForm.notes.trim()
+        ? editForm.notes.trim() + plateSection
+        : plateSection.trim() || null;
+
+      await new Promise<void>((resolve, reject) => {
+        updateTaskMutation.mutate(
+          {
+            id: editingTask.id,
+            data: {
+              flightCode: editForm.flightCode.trim() || undefined,
+              scheduledTime: newScheduledTime,
+              notes: newNotes ?? undefined,
+              km: editForm.km === "" ? null : Number(editForm.km),
+            },
+          },
+          {
+            onSuccess: () => {
+              queryClient.invalidateQueries({
+                queryKey: getListTasksQueryKey(),
+              });
+              resolve();
+            },
+            onError: (err) => reject(err),
+          },
+        );
+      });
+      setEditingTask(null);
+    } catch (e) {
+      console.error("Edit save failed:", e);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const handlePlateChange = (task: Task, vehicleIdVal: string) => {
     if (vehicleIdVal === "cancelled") {
       let newNotes = task.notes ?? "";
@@ -585,7 +664,7 @@ export function ExcelView() {
           value={`custom:${getPlateFromNotes(task.notes)}`}
           className="font-bold text-blue-600"
         >
-          {getPlateFromNotes(task.notes)} (Özel)
+          {getPlateFromNotes(task.notes)}
         </option>
       )}
       {(vehicles as any[]).map((v) => (
@@ -660,6 +739,121 @@ export function ExcelView() {
 
   return (
     <div className="flex flex-col h-full gap-4">
+      {/* ── Double-click edit modal ──────────────────────────────────────── */}
+      {editingTask && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingTask(null);
+          }}
+        >
+          <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-primary" />
+                Görevi Düzenle
+              </h2>
+              <button
+                onClick={() => setEditingTask(null)}
+                className="w-7 h-7 rounded hover:bg-muted flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  UÇUŞ KODU
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={editForm.flightCode}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, flightCode: e.target.value }))
+                  }
+                  placeholder="Örn: TK123"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  SAAT (UTC)
+                </label>
+                <input
+                  type="time"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={editForm.time}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, time: e.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  KM
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={editForm.km}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, km: e.target.value }))
+                  }
+                  placeholder="KM"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  EKİP / NOTLAR
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={editForm.notes}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, notes: e.target.value }))
+                  }
+                  placeholder="Örn: 2CPT 1KBN"
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              💡 Saati değiştirirseniz sıralama otomatik güncellenir. Gece
+              yarısını geçen işler için saati <strong>20:00 üzeri UTC</strong>{" "}
+              olarak bırakın.
+            </p>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditingTask(null)}
+              >
+                İptal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="gap-1.5"
+              >
+                {editSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                Kaydet
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ── Page header ─────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
@@ -1019,12 +1213,16 @@ export function ExcelView() {
                     return (
                       <tr
                         key={idx}
-                        className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                        className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors cursor-default"
                       >
                         {leftTask ? (
                           <>
                             <td
                               className={`p-1.5 text-center font-bold ${lc ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                              onDoubleClick={() =>
+                                leftTask && openEdit(leftTask)
+                              }
+                              title="Çift tıklayarak düzenle"
                             >
                               {idx + 1}
                             </td>
@@ -1108,6 +1306,9 @@ export function ExcelView() {
                             <td
                               className={`p-1.5 font-bold uppercase ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={rightTask.flightCode ?? ""}
+                              onDoubleClick={() =>
+                                rightTask && openEdit(rightTask)
+                              }
                             >
                               <div className="truncate w-full">
                                 {rightTask.flightCode || "-"}
@@ -1296,6 +1497,8 @@ export function ExcelView() {
                           <>
                             <td
                               className={`p-1.5 text-center font-bold ${lec ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                              onDoubleClick={() => le && openEdit(le)}
+                              title="Çift tıklayarak düzenle"
                             >
                               {idx + 1}
                             </td>
@@ -1443,6 +1646,8 @@ export function ExcelView() {
                       >
                         <td
                           className={`p-1.5 text-center font-bold ${cancelled ? "text-rose-700/60 line-through" : "text-amber-800/70"}`}
+                          onDoubleClick={() => openEdit(task)}
+                          title="Çift tıklayarak düzenle"
                         >
                           {idx + 1}
                         </td>

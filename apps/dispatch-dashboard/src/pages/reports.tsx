@@ -3,8 +3,10 @@ import {
   useListAccountingRecords,
   useGetAccountingSummary,
   useListTasks,
+  useListVehicles,
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
+import { matchVehicleByPlate, extractPlateFromNotes } from "@/lib/plate-utils";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -63,6 +65,41 @@ export function Reports() {
     refetch: refetchTasks,
   } = useListTasks({}, { query: { queryKey: getListTasksQueryKey() } });
 
+  const { data: vehicles = [] } = useListVehicles(
+    {},
+    { query: { queryKey: ["/api/vehicles"] } },
+  );
+
+  /**
+   * Resolve a task's "effective" vehicle name and plate.
+   * Priority: vehicleName from DB → match plate in notes against vehicle list → raw note plate → fallback.
+   */
+  const resolveVehicle = (
+    t: any,
+  ): { name: string; plate: string; driver: string } => {
+    if (t.vehicleName) {
+      return {
+        name: t.vehicleName,
+        plate: t.vehicleName,
+        driver: t.driverName || "Belirtilmedi",
+      };
+    }
+    const notePlate = extractPlateFromNotes(t.notes);
+    if (notePlate) {
+      const matched = matchVehicleByPlate(notePlate, vehicles as any[]);
+      if (matched) {
+        return {
+          name: matched.plate,
+          plate: matched.plate,
+          driver: matched.driverName || "Belirtilmedi",
+        };
+      }
+      // Known plate text but couldn't match → show the raw plate (not "Plakasız")
+      return { name: notePlate, plate: notePlate, driver: "Belirtilmedi" };
+    }
+    return { name: "Plakasız / Diğer", plate: "—", driver: "Belirtilmedi" };
+  };
+
   const handleRefresh = () => {
     refetchAccounting();
     refetchTasks();
@@ -116,13 +153,10 @@ export function Reports() {
   // Leaderboard: Vehicles with the most completed trips
   const vehicleStats = completedTasks.reduce(
     (acc, t) => {
-      const key = t.vehicleName || `Plakasız / Diğer`;
+      const { name, driver } = resolveVehicle(t);
+      const key = name;
       if (!acc[key]) {
-        acc[key] = {
-          tripCount: 0,
-          totalKm: 0,
-          driver: t.driverName || "Belirtilmedi",
-        };
+        acc[key] = { tripCount: 0, totalKm: 0, driver };
       }
       acc[key].tripCount += 1;
       acc[key].totalKm += Number((t as any).km ?? 0);
@@ -257,33 +291,36 @@ export function Reports() {
       "Masraf Kodu",
       "Durum",
     ];
-    const rows = filteredTechnicalTasks.map((t) => [
-      t.scheduledTime.substring(0, 10), // UTC date for CSV
-      utcTime(t.scheduledTime),
-      t.vehicleName || "Atanmadı",
-      t.driverName || "Belirtilmedi",
-      t.pickupLocation,
-      t.dropoffLocation,
-      t.notes &&
-      (t.notes.includes("CPT") ||
-        t.notes.includes("KBN") ||
-        t.notes.toLowerCase().includes("cpt") ||
-        t.notes.toLowerCase().includes("kbn"))
-        ? t.notes.includes(" | Plaka:")
-          ? t.notes.split(" | Plaka:")[0]
-          : t.notes
-        : `${t.passengerCount} Kişi`,
-      getExpenseCode(t),
-      t.status === "draft"
-        ? "Taslak"
-        : t.status === "assigned"
-          ? "Bildirildi"
-          : t.status === "in_progress"
-            ? "Yolda"
-            : t.status === "completed"
-              ? "Tamamlandı"
-              : "İptal",
-    ]);
+    const rows = filteredTechnicalTasks.map((t) => {
+      const rv = resolveVehicle(t);
+      return [
+        t.scheduledTime.substring(0, 10), // UTC date for CSV
+        utcTime(t.scheduledTime),
+        rv.plate || "Atanmadı",
+        rv.driver || "Belirtilmedi",
+        t.pickupLocation,
+        t.dropoffLocation,
+        t.notes &&
+        (t.notes.includes("CPT") ||
+          t.notes.includes("KBN") ||
+          t.notes.toLowerCase().includes("cpt") ||
+          t.notes.toLowerCase().includes("kbn"))
+          ? t.notes.includes(" | Plaka:")
+            ? t.notes.split(" | Plaka:")[0]
+            : t.notes
+          : `${t.passengerCount} Kişi`,
+        getExpenseCode(t),
+        t.status === "draft"
+          ? "Taslak"
+          : t.status === "assigned"
+            ? "Bildirildi"
+            : t.status === "in_progress"
+              ? "Yolda"
+              : t.status === "completed"
+                ? "Tamamlandı"
+                : "İptal",
+      ];
+    });
 
     const csvContent = [
       headers.join(","),
