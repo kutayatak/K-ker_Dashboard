@@ -236,11 +236,13 @@ export function ExcelView() {
     uncompleted: uncompletedDays,
   };
 
-  // Filter tasks within the shift window: midnight of selected day → 06:00 of next day.
-  // Starting at midnight (not 06:00) so early-morning tasks like 04:50 are never excluded.
+  // Filter tasks within the shift window: midnight of selected day → midnight of next day.
+  // Both boundaries are at midnight for a clean 24-hour calendar day.
+  // Late-night tasks that cross midnight receive dateOffset=1 during import and
+  // naturally belong to the next calendar day.
   const [y, m, ddVal] = selectedDate.split("-").map(Number);
   const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 0, 0, 0, 0));
-  const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 6, 0, 0, 0));
+  const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 0, 0, 0, 0));
 
   const dayTasks = (tasks as ExtendedTask[]).filter((t) => {
     const time = new Date(t.scheduledTime);

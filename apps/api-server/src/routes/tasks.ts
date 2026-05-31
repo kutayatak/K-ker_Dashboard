@@ -234,7 +234,7 @@ router.post("/import", async (req, res) => {
     if (excelDate) {
       const [y, m, d] = excelDate.split("-").map(Number);
       const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
+      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
 
       await tx
         .delete(tasksTable)

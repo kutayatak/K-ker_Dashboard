@@ -42,7 +42,7 @@ router.get("/download", async (req: any, res: any) => {
 
   const [y, m, d] = date.split("-").map(Number);
   const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-  const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
+  const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
 
   const tasks = await db
     .select({
@@ -213,7 +213,7 @@ router.delete("/files/:id", async (req, res) => {
 
       if (y && m && d) {
         const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-        const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
+        const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
 
         // 2. Delete tasks for that shift date
         await tx

@@ -301,8 +301,14 @@ function buildEkstraTask(
     const isTechnical =
       desc.toLowerCase().includes("teknik") ||
       desc.toLowerCase().includes("teknık") ||
+      desc.toLowerCase().includes("teknk") ||
+      desc.toLowerCase().includes("tekn.") ||
       desc.toLowerCase().includes("masraf") ||
       desc.toLowerCase().includes("msrf") ||
+      desc.toLowerCase().includes("bakım") ||
+      desc.toLowerCase().includes("bakım") ||
+      desc.toLowerCase().includes("arıza") ||
+      desc.toLowerCase().includes("yakıt") ||
       desc.toLowerCase().includes("kod");
 
     const type = isTechnical ? "technical" : "extra";
@@ -348,8 +354,13 @@ function buildEkstraTask(
     const isTechnical =
       desc.toLowerCase().includes("teknik") ||
       desc.toLowerCase().includes("teknık") ||
+      desc.toLowerCase().includes("teknk") ||
+      desc.toLowerCase().includes("tekn.") ||
       desc.toLowerCase().includes("masraf") ||
       desc.toLowerCase().includes("msrf") ||
+      desc.toLowerCase().includes("bakım") ||
+      desc.toLowerCase().includes("arıza") ||
+      desc.toLowerCase().includes("yakıt") ||
       desc.toLowerCase().includes("kod");
 
     const type = isTechnical ? "technical" : "extra";
@@ -473,7 +484,15 @@ export function ImportTasks() {
               rowText.includes("ekstralar") ||
               rowText.includes("ekst.")
             ) {
-              currentSection = "ekstra";
+              if (currentSection !== "ekstra") {
+                currentSection = "ekstra";
+                // CRITICAL: Reset time counters so ekstra times don't compare
+                // against regular-section times and falsely trigger dateOffset.
+                lastTimeMinutesLeft = -1;
+                dateOffsetLeft = 0;
+                lastTimeMinutesRight = -1;
+                dateOffsetRight = 0;
+              }
               continue;
             }
 
@@ -497,6 +516,12 @@ export function ImportTasks() {
 
               if (noCrewInColF || (noHotelInRegularPos && hasDescInEkstraPos)) {
                 currentSection = "ekstra";
+                // CRITICAL: Reset time counters so ekstra times don't compare
+                // against regular-section times and falsely trigger dateOffset.
+                lastTimeMinutesLeft = -1;
+                dateOffsetLeft = 0;
+                lastTimeMinutesRight = -1;
+                dateOffsetRight = 0;
               }
             }
 
