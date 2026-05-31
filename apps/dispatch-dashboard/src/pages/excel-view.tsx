@@ -248,6 +248,10 @@ export function ExcelView() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [queueCollapsed, setQueueCollapsed] = useState(false);
 
+  // ── Download error modal state ──────────────────────────────────────────
+  const [downloadError, setDownloadError] = useState<{ title: string; detail: string } | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   useEffect(() => {
     setLocalQueue(queue);
   }, [queue]);
@@ -857,8 +861,42 @@ export function ExcelView() {
     );
   };
 
-  const handleDownloadExcel = () => {
-    window.open(`/api/excel/download?date=${selectedDate}`, "_blank");
+  const handleDownloadExcel = async () => {
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      const res = await fetch(`/api/excel/download?date=${selectedDate}`);
+      if (!res.ok) {
+        let title = `İndirme Hatası (${res.status})`;
+        let detail = "Bilinmeyen bir hata oluştu.";
+        try {
+          const json = await res.json();
+          if (res.status === 404) {
+            title = "Bu Tarihe Ait Excel Bulunamadı";
+            detail = json?.error ?? "Seçilen tarih için veritabanında kayıtlı bir Excel dosyası yok.\n\nÇözüm: Veri İçe Aktar sayfasından bu tarihe ait dosyayı yükleyin.";
+          } else {
+            detail = json?.detail ?? json?.error ?? `HTTP ${res.status}`;
+          }
+        } catch (_) {}
+        setDownloadError({ title, detail });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sevkiyat_${selectedDate}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    } catch (e: any) {
+      setDownloadError({
+        title: "Bağlantı Hatası",
+        detail: `Sunucuya ulaşılamadı: ${e?.message ?? e}`,
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleRefresh = () => {
@@ -890,6 +928,56 @@ export function ExcelView() {
 
   return (
     <div className="flex flex-col h-full gap-4">
+      {/* ── Download error modal ──────────────────────────────────────────── */}
+      {downloadError && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setDownloadError(null); }}
+        >
+          <div className="bg-card border border-rose-200 dark:border-rose-900/50 rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 mx-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/40 flex items-center justify-center shrink-0">
+                  <span className="text-rose-600 dark:text-rose-400 text-xl">⚠️</span>
+                </div>
+                <div>
+                  <h2 className="font-bold text-base text-rose-700 dark:text-rose-400">{downloadError.title}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Excel indirme işlemi başarısız oldu</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDownloadError(null)}
+                className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center shrink-0 text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Detail */}
+            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-lg p-4">
+              <p className="text-sm text-rose-800 dark:text-rose-300 whitespace-pre-wrap leading-relaxed">{downloadError.detail}</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDownloadError(null)}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-muted hover:bg-muted/80 transition-colors"
+              >
+                Kapat
+              </button>
+              <button
+                onClick={() => { setDownloadError(null); window.location.href = "/import"; }}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Veri İçe Aktar →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Double-click edit modal ──────────────────────────────────────── */}
       {editingTask && (
         <div
@@ -1218,10 +1306,15 @@ export function ExcelView() {
           <Button
             size="sm"
             onClick={handleDownloadExcel}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+            disabled={isDownloading}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm disabled:opacity-60 disabled:cursor-wait"
           >
-            <Download className="w-4 h-4 md:mr-1.5" />
-            <span className="hidden md:inline">Excel İndir</span>
+            {isDownloading ? (
+              <RefreshCw className="w-4 h-4 md:mr-1.5 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 md:mr-1.5" />
+            )}
+            <span className="hidden md:inline">{isDownloading ? "İndiriliyor..." : "Excel İndir"}</span>
           </Button>
         </div>
       </div>

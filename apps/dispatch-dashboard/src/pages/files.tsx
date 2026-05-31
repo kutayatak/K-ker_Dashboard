@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileSpreadsheet, Download, Trash2, Eye, RefreshCw, Calendar } from "lucide-react";
+import { FileSpreadsheet, Download, Trash2, Eye, RefreshCw, Calendar, X, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
 
@@ -16,6 +16,8 @@ interface DbFile {
 export function StoredFiles() {
   const [files, setFiles] = useState<DbFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadError, setDownloadError] = useState<{ title: string; detail: string } | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -70,15 +72,49 @@ export function StoredFiles() {
     window.location.href = `/excel-view?date=${targetUrlDate}`;
   };
 
-  const handleDownload = (displayDate: string) => {
-    let targetUrlDate = displayDate;
-    if (displayDate.length === 6 && !displayDate.includes("-")) {
-      const d = displayDate.slice(0, 2);
-      const m = displayDate.slice(2, 4);
-      const y = "20" + displayDate.slice(4, 6);
+  const handleDownload = async (file: DbFile) => {
+    let targetUrlDate = file.date;
+    if (file.date.length === 6 && !file.date.includes("-")) {
+      const d = file.date.slice(0, 2);
+      const m = file.date.slice(2, 4);
+      const y = "20" + file.date.slice(4, 6);
       targetUrlDate = `${y}-${m}-${d}`;
     }
-    window.open(`/api/excel/download?date=${targetUrlDate}`, "_blank");
+    setDownloadingId(file.id);
+    setDownloadError(null);
+    try {
+      const res = await fetch(`/api/excel/download?date=${targetUrlDate}`);
+      if (!res.ok) {
+        let title = `İndirme Hatası (${res.status})`;
+        let detail = "Bilinmeyen bir hata oluştu.";
+        try {
+          const json = await res.json();
+          if (res.status === 404) {
+            title = "Bu Tarihe Ait Excel Bulunamadı";
+            detail = json?.error ?? "Veritabanında bu tarihe ait dosya kaydı yok.\n\nÇözüm: Veri İçe Aktar sayfasından dosyayı tekrar yükleyin.";
+          } else {
+            detail = json?.detail ?? json?.error ?? `HTTP ${res.status}`;
+          }
+        } catch (_) {}
+        setDownloadError({ title, detail });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sevkiyat_${targetUrlDate}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    } catch (e: any) {
+      setDownloadError({
+        title: "Bağlantı Hatası",
+        detail: `Sunucuya ulaşılamadı: ${e?.message ?? e}`,
+      });
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const formatDateText = (displayDate: string) => {
@@ -101,6 +137,41 @@ export function StoredFiles() {
 
   return (
     <div className="flex flex-col h-full gap-4">
+      {/* ── Download error modal ──────────────────────────────────────────── */}
+      {downloadError && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setDownloadError(null); }}
+        >
+          <div className="bg-card border border-rose-200 dark:border-rose-900/50 rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4 mx-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/40 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-base text-rose-700 dark:text-rose-400">{downloadError.title}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Excel indirme işlemi başarısız oldu</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDownloadError(null)}
+                className="w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center shrink-0 text-muted-foreground"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-lg p-4">
+              <p className="text-sm text-rose-800 dark:text-rose-300 whitespace-pre-wrap leading-relaxed">{downloadError.detail}</p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={() => setDownloadError(null)}>Kapat</Button>
+              <Button size="sm" onClick={() => { setDownloadError(null); window.location.href = "/import"; }}>Veri İçe Aktar →</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -194,10 +265,14 @@ export function StoredFiles() {
                         <Button 
                           size="sm" 
                           variant="outline" 
-                          className="h-8 px-2.5 text-[11px] font-medium border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-950/20"
-                          onClick={() => handleDownload(file.date)}
+                          className="h-8 px-2.5 text-[11px] font-medium border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-950/20 disabled:opacity-60"
+                          onClick={() => handleDownload(file)}
+                          disabled={downloadingId === file.id}
                         >
-                          <Download size={12} className="mr-1" /> İndir
+                          {downloadingId === file.id
+                            ? <RefreshCw size={12} className="mr-1 animate-spin" />
+                            : <Download size={12} className="mr-1" />}
+                          {downloadingId === file.id ? "İndiriliyor..." : "İndir"}
                         </Button>
                         <Button 
                           size="sm" 
