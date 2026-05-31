@@ -302,20 +302,37 @@ export function Reports() {
     });
   }, [esnafRecords, selectedMonth, searchQuery, vehicles]);
 
+  const formatDisplayPlate = (plate: string): string => {
+    const clean = plate.trim();
+    // If it starts with S or C followed immediately by digits (allowing spaces), e.g. S25393 or S 25393 -> S 25393
+    const match = clean.match(/^([SC])\s*(\d+)$/i);
+    if (match) {
+      return `${match[1].toUpperCase()} ${match[2]}`;
+    }
+    return clean.toUpperCase();
+  };
+
+  const normalizeForMap = (plate: string): string => {
+    return plate.replace(/[\s\-\.]/g, "").toUpperCase();
+  };
+
   const outsourceVehicleSummaries = useMemo(() => {
     const map = new Map<string, { vehicleId: number; vehicleName: string; driverName: string; totalRevenue: number; tripCount: number }>();
     
     // Populate from filtered records
     filteredRecords.forEach((r) => {
-      const existing = map.get(r.vehicleName);
+      const normalizedKey = normalizeForMap(r.vehicleName);
+      const displayPlate = formatDisplayPlate(r.vehicleName);
+      
+      const existing = map.get(normalizedKey);
       if (existing) {
         existing.totalRevenue += Number(r.amount);
         existing.tripCount += 1;
       } else {
         const vInfo = vehicles.find((v) => v.id === r.vehicleId);
-        map.set(r.vehicleName, {
+        map.set(normalizedKey, {
           vehicleId: r.vehicleId,
-          vehicleName: r.vehicleName,
+          vehicleName: displayPlate,
           driverName: vInfo?.driverName || "Esnaf Sürücü",
           totalRevenue: Number(r.amount),
           tripCount: 1,
@@ -323,9 +340,9 @@ export function Reports() {
       }
     });
 
-    // Convert to array and sort by revenue descending
+    // Convert to array and sort by tripCount descending
     return Array.from(map.values())
-      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+      .sort((a, b) => b.tripCount - a.tripCount);
   }, [filteredRecords, vehicles]);
 
   const filteredTechnicalTasks = technicalTasks
@@ -350,16 +367,16 @@ export function Reports() {
   // CSV Export for Esnaf Sefer Listesi
   const exportToCSV = () => {
     if (!filteredRecords.length) return;
-    const headers = ["ID", "Tarih", "Araç / Plaka", "Sürücü", "Görev ID", "Hak Ediş Tutarı", "Özel Notlar"];
+    const headers = ["ID", "Tarih", "Araç / Plaka", "Sürücü", "Görev ID", "Özel Notlar"];
     const rows = filteredRecords.map((r) => {
       const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+      const displayPlate = formatDisplayPlate(r.vehicleName);
       return [
         r.id,
         format(new Date(r.date), "yyyy-MM-dd HH:mm"),
-        r.vehicleName || `Araç ${r.vehicleId}`,
+        displayPlate,
         vInfo?.driverName || "Belirtilmedi",
         r.taskId,
-        r.amount,
         r.notes || "",
       ];
     });
@@ -884,7 +901,7 @@ export function Reports() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none">
             {outsourceVehicleSummaries.map((s) => (
               <Card
-                key={s.vehicleId}
+                key={s.vehicleName}
                 className="border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200"
               >
                 <CardContent className="p-4 flex flex-col justify-between h-full">
@@ -900,14 +917,11 @@ export function Reports() {
                     </div>
                   </div>
                   <div className="mt-2">
-                    <div className="text-lg font-extrabold text-foreground tracking-tight">
-                      ₺
-                      {s.totalRevenue.toLocaleString("tr-TR", {
-                        minimumFractionDigits: 2,
-                      })}
+                    <div className="text-xl font-extrabold text-primary tracking-tight">
+                      {s.tripCount} Sefer
                     </div>
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
-                      {s.tripCount} tamamlanan sefer
+                    <div className="text-[10px] text-muted-foreground font-semibold mt-0.5">
+                      Tamamlanan Toplam İş
                     </div>
                   </div>
                 </CardContent>
@@ -934,9 +948,6 @@ export function Reports() {
                       Görev ID
                     </TableHead>
                     <TableHead className="font-semibold text-xs tracking-wider uppercase">
-                      Hak Ediş Tutarı
-                    </TableHead>
-                    <TableHead className="font-semibold text-xs tracking-wider uppercase">
                       Özel Notlar
                     </TableHead>
                   </TableRow>
@@ -945,7 +956,7 @@ export function Reports() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell
-                        colSpan={6}
+                        colSpan={5}
                         className="text-center py-12 text-muted-foreground"
                       >
                         Kayıtlar yükleniyor...
@@ -954,7 +965,7 @@ export function Reports() {
                   ) : filteredRecords.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={6}
+                        colSpan={5}
                         className="text-center py-12 text-muted-foreground"
                       >
                         Seçilen ayda tamamlanmış esnaf sefer kaydı bulunamadı.
@@ -963,6 +974,7 @@ export function Reports() {
                   ) : (
                     filteredRecords.map((r) => {
                       const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+                      const displayPlate = formatDisplayPlate(r.vehicleName);
                       return (
                         <TableRow
                           key={r.id}
@@ -972,19 +984,13 @@ export function Reports() {
                             {format(new Date(r.date), "yyyy-MM-dd HH:mm")}
                           </TableCell>
                           <TableCell className="font-bold text-foreground">
-                            {r.vehicleName}
+                            {displayPlate}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {vInfo?.driverName || "Belirtilmedi"}
                           </TableCell>
                           <TableCell className="font-mono text-muted-foreground text-xs">
                             #görev_{r.taskId}
-                          </TableCell>
-                          <TableCell className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                            ₺
-                            {Number(r.amount).toLocaleString("tr-TR", {
-                              minimumFractionDigits: 2,
-                            })}
                           </TableCell>
                           <TableCell
                             className="text-muted-foreground text-xs font-medium truncate max-w-[200px]"
