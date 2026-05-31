@@ -395,7 +395,7 @@ router.post("/batch-notify", async (req, res) => {
         new Date(b.scheduledTime).getTime(),
     );
 
-    let messageText = `Merhaba ${data.driverName}\n\n`;
+    let messageText = "";
     const updatedTaskIds = [];
 
     for (const task of sortedTasks) {
@@ -430,7 +430,7 @@ router.post("/batch-notify", async (req, res) => {
       updatedTaskIds.push(task.id);
     }
 
-    messageText += "\nİyi çalışmalar!";
+    messageText = messageText.trim();
 
     // Format phone for wa.me
     let phone = data.phone.replace(/\D/g, "");

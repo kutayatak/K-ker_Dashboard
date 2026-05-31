@@ -478,7 +478,7 @@ export function Board() {
         const line = [task.flightCode, time, location, crew, direction]
           .filter(Boolean)
           .join("   ");
-        const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görev İPTAL EDİLMİŞTİR:\n${line}\n\nİyi çalışmalar.`;
+        const message = `Aşağıdaki görev İPTAL EDİLMİŞTİR:\n${line}`;
         window.open(makeWaUrl(vehicle.phone, message), "_blank");
       }
     }
@@ -556,7 +556,7 @@ export function Board() {
     const line = [task.flightCode, time, location, crew, direction]
       .filter(Boolean)
       .join("   ");
-    const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görevde GÜNCELLEME yapılmıştır:\n${line}\n\nLütfen kontrol ediniz. İyi çalışmalar.`;
+    const message = `Aşağıdaki görevde GÜNCELLEME yapılmıştır:\n${line}`;
     window.open(makeWaUrl(vehicle.phone, message), "_blank");
     setPendingUpdateIds((prev) => {
       const next = new Set(prev);
