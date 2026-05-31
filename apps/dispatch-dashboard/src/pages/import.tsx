@@ -468,7 +468,11 @@ export function ImportTasks() {
               .map((c) => String(c || ""))
               .join(" ")
               .toLowerCase();
-            if (rowText.includes("ekstra") || rowText.includes("ekstralar")) {
+            if (
+              rowText.includes("ekstra") ||
+              rowText.includes("ekstralar") ||
+              rowText.includes("ekst.")
+            ) {
               currentSection = "ekstra";
               continue;
             }
@@ -478,12 +482,20 @@ export function ImportTasks() {
 
             const colAStr = String(colA).trim();
 
-            if (colAStr === "1" && i > 10) {
-              if (
+            if (colAStr === "1" && i > 10 && currentSection === "regular") {
+              // Heuristic 1 (original): column F (crew) is empty
+              const noCrewInColF =
                 row[5] == null ||
                 String(row[5]).trim() === "" ||
-                String(row[5]).trim() === "System.Xml.XmlElement"
-              ) {
+                String(row[5]).trim() === "System.Xml.XmlElement";
+
+              // Heuristic 2 (new): column E (hotel in regular layout = index 4)
+              // is empty, but column D (description in ekstra layout = index 3) has
+              // a value — this precisely matches the ekstra column structure.
+              const noHotelInRegularPos = !isValidValue(row[4]);
+              const hasDescInEkstraPos = isValidValue(row[3]);
+
+              if (noCrewInColF || (noHotelInRegularPos && hasDescInEkstraPos)) {
                 currentSection = "ekstra";
               }
             }

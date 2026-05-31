@@ -16,16 +16,24 @@ const formatToDDMMYY = (dateStr: string): string => {
 // Returns the stored Excel file with plate values written to the correct cells
 router.get("/download", async (req: any, res: any) => {
   const date = req.query.date as string;
-  if (!date) return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
+  if (!date)
+    return res
+      .status(400)
+      .json({ error: "date query param required (YYYY-MM-DD)" });
 
   const dmy = formatToDDMMYY(date);
 
   const [file] = await db
     .select()
     .from(excelFilesTable)
-    .where(sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`);
+    .where(
+      sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`,
+    );
 
-  if (!file) return res.status(404).json({ error: "No Excel file stored for this date" });
+  if (!file)
+    return res
+      .status(404)
+      .json({ error: "No Excel file stored for this date" });
 
   // Decode base64 → buffer → workbook
   const buf = Buffer.from(file.data, "base64");
@@ -33,26 +41,28 @@ router.get("/download", async (req: any, res: any) => {
   await wb.xlsx.load(buf as any);
 
   const [y, m, d] = date.split("-").map(Number);
-  const shiftStart = new Date(Date.UTC(y, m - 1, d, 6, 0, 0, 0));
+  const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
   const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
 
   const tasks = await db
     .select({
-      rowIndex:  tasksTable.rowIndex,
+      rowIndex: tasksTable.rowIndex,
       tableType: tasksTable.tableType,
       vehicleId: tasksTable.vehicleId,
-      km:        tasksTable.km,
-      status:    tasksTable.status,
-      type:      tasksTable.type,
-      notes:     tasksTable.notes,
+      km: tasksTable.km,
+      status: tasksTable.status,
+      type: tasksTable.type,
+      notes: tasksTable.notes,
     })
     .from(tasksTable)
     .where(
-      sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
+      sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
     );
 
   // Load vehicle plates in a single batch query to avoid N+1 issue
-  const vehicleIds = [...new Set(tasks.map((t) => t.vehicleId).filter(Boolean))] as number[];
+  const vehicleIds = [
+    ...new Set(tasks.map((t) => t.vehicleId).filter(Boolean)),
+  ] as number[];
   const vehicleMap = new Map<number, string>();
   if (vehicleIds.length > 0) {
     const vehicles = await db
@@ -106,7 +116,7 @@ router.get("/download", async (req: any, res: any) => {
             cell.fill = {
               type: "pattern",
               pattern: "solid",
-              fgColor: { argb: "FFFFFFFF" }
+              fgColor: { argb: "FFFFFFFF" },
             };
           });
         }
@@ -139,7 +149,7 @@ router.get("/download", async (req: any, res: any) => {
             cell.fill = {
               type: "pattern",
               pattern: "solid",
-              fgColor: { argb: "FFFFFFFF" }
+              fgColor: { argb: "FFFFFFFF" },
             };
           });
         }
@@ -150,8 +160,14 @@ router.get("/download", async (req: any, res: any) => {
   // Write back to buffer — preserve existing format
   const outBuf = await wb.xlsx.writeBuffer();
 
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="sevkiyat_${date}.xlsx"`);
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="sevkiyat_${date}.xlsx"`,
+  );
   return res.send(outBuf);
 });
 
@@ -174,10 +190,13 @@ router.get("/files", async (req, res) => {
 // Deletes a stored Excel file by ID and its corresponding tasks
 router.delete("/files/:id", async (req, res) => {
   const id = Number(req.params.id);
-  
+
   await db.transaction(async (tx) => {
     // 1. Fetch file record
-    const [file] = await tx.select().from(excelFilesTable).where(eq(excelFilesTable.id, id));
+    const [file] = await tx
+      .select()
+      .from(excelFilesTable)
+      .where(eq(excelFilesTable.id, id));
     if (file) {
       const shiftDateStr = file.date;
       let y, m, d;
@@ -193,7 +212,7 @@ router.delete("/files/:id", async (req, res) => {
       }
 
       if (y && m && d) {
-        const shiftStart = new Date(Date.UTC(y, m - 1, d, 6, 0, 0, 0));
+        const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
         const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
 
         // 2. Delete tasks for that shift date
@@ -201,8 +220,8 @@ router.delete("/files/:id", async (req, res) => {
           .delete(tasksTable)
           .where(
             and(
-              sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`
-            )
+              sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
+            ),
           );
       }
     }
@@ -218,15 +237,26 @@ router.delete("/files/:id", async (req, res) => {
 // Returns whether a file is stored for this date
 router.get("/has", async (req, res) => {
   const date = req.query.date as string;
-  if (!date) return res.status(400).json({ error: "date query param required" });
+  if (!date)
+    return res.status(400).json({ error: "date query param required" });
   const dmy = formatToDDMMYY(date);
 
   const [file] = await db
-    .select({ id: excelFilesTable.id, filename: excelFilesTable.filename, uploadedAt: excelFilesTable.uploadedAt })
+    .select({
+      id: excelFilesTable.id,
+      filename: excelFilesTable.filename,
+      uploadedAt: excelFilesTable.uploadedAt,
+    })
     .from(excelFilesTable)
-    .where(sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`);
+    .where(
+      sql`${excelFilesTable.date} = ${date} OR ${excelFilesTable.date} = ${dmy}`,
+    );
 
-  return res.json({ exists: !!file, filename: file?.filename ?? null, uploadedAt: file?.uploadedAt ?? null });
+  return res.json({
+    exists: !!file,
+    filename: file?.filename ?? null,
+    uploadedAt: file?.uploadedAt ?? null,
+  });
 });
 
 // GET /excel/debug-tasks

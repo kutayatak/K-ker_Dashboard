@@ -10,10 +10,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileSpreadsheet, Download, RefreshCw, Plus, Users, Clock, Plane, Calendar as CalendarIcon } from "lucide-react";
+import {
+  FileSpreadsheet,
+  Download,
+  RefreshCw,
+  Plus,
+  Users,
+  Clock,
+  Plane,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 
 type ExtendedTask = Task & {
@@ -23,31 +36,31 @@ type ExtendedTask = Task & {
 };
 
 const DEFAULT_REGULAR_WIDTHS = [
-  48,  // S.NO
+  48, // S.NO
   100, // UÇUŞ KODU
   160, // PLAKA (SÜRÜCÜ)
-  64,  // SAAT
+  64, // SAAT
   220, // OTEL ADI / NEREDEN
   120, // EKİP (KİŞİ)
-  80,  // KM
-  8,   // Separator
+  80, // KM
+  8, // Separator
   100, // UÇUŞ KODU
   160, // PLAKA (SÜRÜCÜ)
-  64,  // SAAT
+  64, // SAAT
   220, // OTEL ADI / NEREYE
   120, // EKİP (KİŞİ)
-  80   // KM
+  80, // KM
 ];
 
 const DEFAULT_EXTRA_WIDTHS = [
-  48,  // S.NO
-  64,  // SAAT
+  48, // S.NO
+  64, // SAAT
   160, // PLAKA (SÜRÜCÜ)
   320, // OTEL / AÇIKLAMA
-  8,   // Separator
-  64,  // SAAT
+  8, // Separator
+  64, // SAAT
   160, // PLAKA (SÜRÜCÜ)
-  320  // OTEL / AÇIKLAMA
+  320, // OTEL / AÇIKLAMA
 ];
 
 export function ExcelView() {
@@ -70,7 +83,7 @@ export function ExcelView() {
       }
     };
     handleUrlChange();
-    
+
     // Listen for url changes or popstate events
     window.addEventListener("popstate", handleUrlChange);
     return () => window.removeEventListener("popstate", handleUrlChange);
@@ -109,11 +122,12 @@ export function ExcelView() {
   const startResize = (
     tableType: "regular" | "extra",
     colIndex: number,
-    startEvent: React.MouseEvent
+    startEvent: React.MouseEvent,
   ) => {
     startEvent.preventDefault();
     const startX = startEvent.clientX;
-    const startWidths = tableType === "regular" ? [...regularWidths] : [...extraWidths];
+    const startWidths =
+      tableType === "regular" ? [...regularWidths] : [...extraWidths];
     const startWidth = startWidths[colIndex];
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -137,15 +151,21 @@ export function ExcelView() {
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      
+
       if (tableType === "regular") {
         setRegularWidths((latest) => {
-          localStorage.setItem("excel_view_regular_widths", JSON.stringify(latest));
+          localStorage.setItem(
+            "excel_view_regular_widths",
+            JSON.stringify(latest),
+          );
           return latest;
         });
       } else {
         setExtraWidths((latest) => {
-          localStorage.setItem("excel_view_extra_widths", JSON.stringify(latest));
+          localStorage.setItem(
+            "excel_view_extra_widths",
+            JSON.stringify(latest),
+          );
           return latest;
         });
       }
@@ -158,9 +178,12 @@ export function ExcelView() {
   // Fetch tasks and vehicles
   const { data: tasks = [], isPending: tasksPending } = useListTasks(
     {},
-    { query: { queryKey: getListTasksQueryKey() } }
+    { query: { queryKey: getListTasksQueryKey() } },
   );
-  const { data: vehicles = [] } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
+  const { data: vehicles = [] } = useListVehicles(
+    {},
+    { query: { queryKey: ["/api/vehicles"] } },
+  );
 
   const updateTaskMutation = useUpdateTask();
 
@@ -172,16 +195,11 @@ export function ExcelView() {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
-  // Helper to get shift date key (D 06:00 to D+1 05:59 belongs to shift D)
+  // Helper to get shift date key — shifts start at midnight so we use raw UTC date.
   const getShiftDateKey = (scheduledTime: string) => {
     const d = new Date(scheduledTime);
     if (isNaN(d.getTime())) return "";
-    const hours = d.getUTCHours();
-    const shiftDate = new Date(d.getTime());
-    if (hours < 6) {
-      shiftDate.setUTCDate(shiftDate.getUTCDate() - 1);
-    }
-    return `${shiftDate.getUTCFullYear()}-${String(shiftDate.getUTCMonth() + 1).padStart(2, "0")}-${String(shiftDate.getUTCDate()).padStart(2, "0")}`;
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
   };
 
   // Pre-compute calendar day status
@@ -195,7 +213,10 @@ export function ExcelView() {
         const prev = byDate.get(key);
         // Technical tasks are completed by default as they have no vehicle/plate.
         // Other tasks are active if they are not completed and not cancelled.
-        const isActive = t.status !== "completed" && t.status !== "cancelled" && t.type !== "technical";
+        const isActive =
+          t.status !== "completed" &&
+          t.status !== "cancelled" &&
+          t.type !== "technical";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
       }
     }
@@ -210,11 +231,15 @@ export function ExcelView() {
     return { completedDays: completed, uncompletedDays: uncompleted };
   }, [tasks]);
 
-  const calendarModifiers = { completed: completedDays, uncompleted: uncompletedDays };
+  const calendarModifiers = {
+    completed: completedDays,
+    uncompleted: uncompletedDays,
+  };
 
-  // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
+  // Filter tasks within the shift window: midnight of selected day → 06:00 of next day.
+  // Starting at midnight (not 06:00) so early-morning tasks like 04:50 are never excluded.
   const [y, m, ddVal] = selectedDate.split("-").map(Number);
-  const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 6, 0, 0, 0));
+  const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 0, 0, 0, 0));
   const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 6, 0, 0, 0));
 
   const dayTasks = (tasks as ExtendedTask[]).filter((t) => {
@@ -265,7 +290,13 @@ export function ExcelView() {
   const handlePlateChange = (task: Task, vehicleIdVal: string) => {
     if (vehicleIdVal === "cancelled") {
       let newNotes = task.notes ?? "";
-      const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
+      const cleanNotes = newNotes.includes(" | Plaka:")
+        ? newNotes.split(" | Plaka:")[0]
+        : newNotes.includes(" | İPTAL")
+          ? newNotes.split(" | İPTAL")[0]
+          : newNotes === "İPTAL"
+            ? ""
+            : newNotes;
       const finalNotes = cleanNotes ? `${cleanNotes} | İPTAL` : "İPTAL";
 
       updateTaskMutation.mutate(
@@ -281,20 +312,30 @@ export function ExcelView() {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
           },
-        }
+        },
       );
       return;
     }
 
     if (vehicleIdVal === "custom_prompt") {
-      const customPlate = prompt("Lütfen özel plaka veya plakaları girin (Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456):");
+      const customPlate = prompt(
+        "Lütfen özel plaka veya plakaları girin (Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456):",
+      );
       if (customPlate === null) return; // cancelled prompt
 
       let newNotes = task.notes ?? "";
-      const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
-      
+      const cleanNotes = newNotes.includes(" | Plaka:")
+        ? newNotes.split(" | Plaka:")[0]
+        : newNotes.includes(" | İPTAL")
+          ? newNotes.split(" | İPTAL")[0]
+          : newNotes === "İPTAL"
+            ? ""
+            : newNotes;
+
       const finalNotes = customPlate.trim()
-        ? (cleanNotes ? `${cleanNotes} | Plaka: ${customPlate.trim()}` : `Plaka: ${customPlate.trim()}`)
+        ? cleanNotes
+          ? `${cleanNotes} | Plaka: ${customPlate.trim()}`
+          : `Plaka: ${customPlate.trim()}`
         : cleanNotes;
 
       updateTaskMutation.mutate(
@@ -310,7 +351,7 @@ export function ExcelView() {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
           },
-        }
+        },
       );
       return;
     }
@@ -320,10 +361,18 @@ export function ExcelView() {
 
     // Formulate plate notes to preserve crew
     let newNotes = task.notes ?? "";
-    const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
+    const cleanNotes = newNotes.includes(" | Plaka:")
+      ? newNotes.split(" | Plaka:")[0]
+      : newNotes.includes(" | İPTAL")
+        ? newNotes.split(" | İPTAL")[0]
+        : newNotes === "İPTAL"
+          ? ""
+          : newNotes;
 
     if (selectedVehicle) {
-      newNotes = cleanNotes ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}` : `Plaka: ${selectedVehicle.plate}`;
+      newNotes = cleanNotes
+        ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
+        : `Plaka: ${selectedVehicle.plate}`;
     } else {
       newNotes = cleanNotes;
     }
@@ -341,7 +390,7 @@ export function ExcelView() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
         },
-      }
+      },
     );
   };
 
@@ -358,7 +407,7 @@ export function ExcelView() {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
         },
-      }
+      },
     );
   };
 
@@ -381,11 +430,14 @@ export function ExcelView() {
               Excel Sefer Görünümü
             </h1>
             <p className="text-muted-foreground text-xs md:text-sm">
-              Sürücü plaka ve KM girişini doğrudan tanıdık spreadsheet ızgarasında yapın
+              Sürücü plaka ve KM girişini doğrudan tanıdık spreadsheet
+              ızgarasında yapın
             </p>
           </div>
           <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1.5 rounded-md border border-slate-100 dark:border-slate-800">
-            <span className="text-xs font-semibold text-muted-foreground pl-1">Vardiya Tarihi:</span>
+            <span className="text-xs font-semibold text-muted-foreground pl-1">
+              Vardiya Tarihi:
+            </span>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -394,18 +446,27 @@ export function ExcelView() {
                   className="h-8 border bg-card px-3 text-xs font-medium focus-visible:ring-2 hover:bg-slate-50 dark:hover:bg-slate-900 flex items-center gap-2 rounded-md"
                 >
                   <CalendarIcon className="w-3.5 h-3.5 text-emerald-600" />
-                  {selectedDate ? format(new Date(selectedDate), "dd MMMM yyyy", { locale: tr }) : ""}
+                  {selectedDate
+                    ? format(new Date(selectedDate), "dd MMMM yyyy", {
+                        locale: tr,
+                      })
+                    : ""}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 border shadow-md rounded-md bg-popover z-50" align="start">
+              <PopoverContent
+                className="w-auto p-0 border shadow-md rounded-md bg-popover z-50"
+                align="start"
+              >
                 <Calendar
                   mode="single"
                   selected={selectedDate ? new Date(selectedDate) : undefined}
                   onSelect={handleDateSelect}
                   modifiers={calendarModifiers}
                   modifiersClassNames={{
-                    completed: "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
-                    uncompleted: "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
+                    completed:
+                      "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
+                    uncompleted:
+                      "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
                   }}
                 />
               </PopoverContent>
@@ -414,8 +475,15 @@ export function ExcelView() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleRefresh} disabled={tasksPending}>
-            <RefreshCw className={`w-4 h-4 ${tasksPending ? "animate-spin" : ""}`} />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={tasksPending}
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${tasksPending ? "animate-spin" : ""}`}
+            />
             <span className="hidden md:inline ml-1.5">Yenile</span>
           </Button>
           <Button
@@ -433,16 +501,23 @@ export function ExcelView() {
       <Card className="flex-1 overflow-hidden flex flex-col min-h-0 border-slate-200/80 shadow-sm">
         <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            <Badge
+              variant="outline"
+              className="bg-blue-50 text-blue-700 border-blue-200"
+            >
               GELİR (GELEN UÇUŞLAR)
             </Badge>
             <span className="text-muted-foreground text-xs">&bull;</span>
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+            <Badge
+              variant="outline"
+              className="bg-amber-50 text-amber-700 border-amber-200"
+            >
               GİDER (GİDEN UÇUŞLAR)
             </Badge>
           </h3>
           <span className="text-xs font-mono text-muted-foreground">
-            Toplam: {dayTasks.length} Sefer ({leftRegular.length} Gelir / {rightRegular.length} Gider)
+            Toplam: {dayTasks.length} Sefer ({leftRegular.length} Gelir /{" "}
+            {rightRegular.length} Gider)
           </span>
         </div>
         <div className="flex-1 overflow-auto">
@@ -566,28 +641,65 @@ export function ExcelView() {
                 const rightCancelled = rightTask?.status === "cancelled";
 
                 return (
-                  <tr key={idx} className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors">
+                  <tr
+                    key={idx}
+                    className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                  >
                     {/* Left (Gelir) Task Cells */}
                     {leftTask ? (
                       <>
-                        <td className={`p-1.5 text-center font-bold ${leftCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}>{idx + 1}</td>
-                        <td className={`p-1.5 font-bold uppercase ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.flightCode ?? ""}>
-                          <div className="truncate w-full block whitespace-nowrap">{leftTask.flightCode || "-"}</div>
+                        <td
+                          className={`p-1.5 text-center font-bold ${leftCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                        >
+                          {idx + 1}
                         </td>
-                        <td className={`p-1 ${leftCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
+                        <td
+                          className={`p-1.5 font-bold uppercase ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                          title={leftTask.flightCode ?? ""}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {leftTask.flightCode || "-"}
+                          </div>
+                        </td>
+                        <td
+                          className={`p-1 ${leftCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
+                        >
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={leftTask.status === "cancelled" ? "cancelled" : (leftTask.vehicleId ?? (getPlateFromNotes(leftTask.notes) ? `custom:${getPlateFromNotes(leftTask.notes)}` : ""))}
-                            onChange={(e) => handlePlateChange(leftTask, e.target.value)}
+                            value={
+                              leftTask.status === "cancelled"
+                                ? "cancelled"
+                                : (leftTask.vehicleId ??
+                                  (getPlateFromNotes(leftTask.notes)
+                                    ? `custom:${getPlateFromNotes(leftTask.notes)}`
+                                    : ""))
+                            }
+                            onChange={(e) =>
+                              handlePlateChange(leftTask, e.target.value)
+                            }
                           >
                             <option value="">Plaka Seçin...</option>
-                            <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
-                            <option value="custom_prompt" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
-                            {leftTask.vehicleId === null && getPlateFromNotes(leftTask.notes) && (
-                              <option value={`custom:${getPlateFromNotes(leftTask.notes)}`} className="font-bold text-blue-600">
-                                {getPlateFromNotes(leftTask.notes)} (Özel)
-                              </option>
-                            )}
+                            <option
+                              value="cancelled"
+                              className="text-red-600 font-bold"
+                            >
+                              İPTAL
+                            </option>
+                            <option
+                              value="custom_prompt"
+                              className="text-blue-600 font-bold"
+                            >
+                              ✍️ Özel Plaka Yaz...
+                            </option>
+                            {leftTask.vehicleId === null &&
+                              getPlateFromNotes(leftTask.notes) && (
+                                <option
+                                  value={`custom:${getPlateFromNotes(leftTask.notes)}`}
+                                  className="font-bold text-blue-600"
+                                >
+                                  {getPlateFromNotes(leftTask.notes)} (Özel)
+                                </option>
+                              )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -595,28 +707,50 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${leftCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}>
+                        <td
+                          className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${leftCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}
+                        >
                           {format(new Date(leftTask.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftTask.pickupLocation}>
-                          <div className="truncate w-full block whitespace-nowrap">{leftTask.pickupLocation}</div>
-                        </td>
-                        <td className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={leftTask.notes ?? ""}>
+                        <td
+                          className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                          title={leftTask.pickupLocation}
+                        >
                           <div className="truncate w-full block whitespace-nowrap">
-                            {leftTask.notes && (leftTask.notes.includes("CPT") || leftTask.notes.includes("KBN") || leftTask.notes.toLowerCase().includes("cpt") || leftTask.notes.toLowerCase().includes("kbn"))
-                              ? (leftTask.notes.includes(" | Plaka:") ? leftTask.notes.split(" | Plaka:")[0] : leftTask.notes)
+                            {leftTask.pickupLocation}
+                          </div>
+                        </td>
+                        <td
+                          className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                          title={leftTask.notes ?? ""}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {leftTask.notes &&
+                            (leftTask.notes.includes("CPT") ||
+                              leftTask.notes.includes("KBN") ||
+                              leftTask.notes.toLowerCase().includes("cpt") ||
+                              leftTask.notes.toLowerCase().includes("kbn"))
+                              ? leftTask.notes.includes(" | Plaka:")
+                                ? leftTask.notes.split(" | Plaka:")[0]
+                                : leftTask.notes
                               : `${leftTask.passengerCount} kişi`}
                           </div>
                         </td>
-                        <td className={`p-1 ${leftCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}>
+                        <td
+                          className={`p-1 ${leftCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
+                        >
                           <input
                             type="number"
                             min={0}
                             disabled={leftCancelled}
                             className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
-                            defaultValue={leftTask.km != null ? Number(leftTask.km) : ""}
+                            defaultValue={
+                              leftTask.km != null ? Number(leftTask.km) : ""
+                            }
                             placeholder="KM"
-                            onBlur={(e) => handleKmChange(leftTask.id, e.target.value)}
+                            onBlur={(e) =>
+                              handleKmChange(leftTask.id, e.target.value)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.currentTarget.blur();
@@ -627,7 +761,9 @@ export function ExcelView() {
                       </>
                     ) : (
                       <>
-                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">{idx + 1}</td>
+                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
+                          {idx + 1}
+                        </td>
                         <td colSpan={6} className="bg-slate-50/10"></td>
                       </>
                     )}
@@ -638,23 +774,53 @@ export function ExcelView() {
                     {/* Right (Gider) Task Cells */}
                     {rightTask ? (
                       <>
-                        <td className={`p-1.5 font-bold uppercase ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.flightCode ?? ""}>
-                          <div className="truncate w-full block whitespace-nowrap">{rightTask.flightCode || "-"}</div>
+                        <td
+                          className={`p-1.5 font-bold uppercase ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                          title={rightTask.flightCode ?? ""}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {rightTask.flightCode || "-"}
+                          </div>
                         </td>
-                        <td className={`p-1 ${rightCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
+                        <td
+                          className={`p-1 ${rightCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
+                        >
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={rightTask.status === "cancelled" ? "cancelled" : (rightTask.vehicleId ?? (getPlateFromNotes(rightTask.notes) ? `custom:${getPlateFromNotes(rightTask.notes)}` : ""))}
-                            onChange={(e) => handlePlateChange(rightTask, e.target.value)}
+                            value={
+                              rightTask.status === "cancelled"
+                                ? "cancelled"
+                                : (rightTask.vehicleId ??
+                                  (getPlateFromNotes(rightTask.notes)
+                                    ? `custom:${getPlateFromNotes(rightTask.notes)}`
+                                    : ""))
+                            }
+                            onChange={(e) =>
+                              handlePlateChange(rightTask, e.target.value)
+                            }
                           >
                             <option value="">Plaka Seçin...</option>
-                            <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
-                            <option value="custom_prompt" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
-                            {rightTask.vehicleId === null && getPlateFromNotes(rightTask.notes) && (
-                              <option value={`custom:${getPlateFromNotes(rightTask.notes)}`} className="font-bold text-blue-600">
-                                {getPlateFromNotes(rightTask.notes)} (Özel)
-                              </option>
-                            )}
+                            <option
+                              value="cancelled"
+                              className="text-red-600 font-bold"
+                            >
+                              İPTAL
+                            </option>
+                            <option
+                              value="custom_prompt"
+                              className="text-blue-600 font-bold"
+                            >
+                              ✍️ Özel Plaka Yaz...
+                            </option>
+                            {rightTask.vehicleId === null &&
+                              getPlateFromNotes(rightTask.notes) && (
+                                <option
+                                  value={`custom:${getPlateFromNotes(rightTask.notes)}`}
+                                  className="font-bold text-blue-600"
+                                >
+                                  {getPlateFromNotes(rightTask.notes)} (Özel)
+                                </option>
+                              )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -662,28 +828,50 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rightCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}>
+                        <td
+                          className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rightCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                        >
                           {format(new Date(rightTask.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={rightTask.dropoffLocation}>
-                          <div className="truncate w-full block whitespace-nowrap">{rightTask.dropoffLocation}</div>
-                        </td>
-                        <td className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`} title={rightTask.notes ?? ""}>
+                        <td
+                          className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                          title={rightTask.dropoffLocation}
+                        >
                           <div className="truncate w-full block whitespace-nowrap">
-                            {rightTask.notes && (rightTask.notes.includes("CPT") || rightTask.notes.includes("KBN") || rightTask.notes.toLowerCase().includes("cpt") || rightTask.notes.toLowerCase().includes("kbn"))
-                              ? (rightTask.notes.includes(" | Plaka:") ? rightTask.notes.split(" | Plaka:")[0] : rightTask.notes)
+                            {rightTask.dropoffLocation}
+                          </div>
+                        </td>
+                        <td
+                          className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                          title={rightTask.notes ?? ""}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {rightTask.notes &&
+                            (rightTask.notes.includes("CPT") ||
+                              rightTask.notes.includes("KBN") ||
+                              rightTask.notes.toLowerCase().includes("cpt") ||
+                              rightTask.notes.toLowerCase().includes("kbn"))
+                              ? rightTask.notes.includes(" | Plaka:")
+                                ? rightTask.notes.split(" | Plaka:")[0]
+                                : rightTask.notes
                               : `${rightTask.passengerCount} kişi`}
                           </div>
                         </td>
-                        <td className={`p-1 ${rightCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}>
+                        <td
+                          className={`p-1 ${rightCancelled ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
+                        >
                           <input
                             type="number"
                             min={0}
                             disabled={rightCancelled}
                             className="w-full bg-transparent p-1 text-center font-bold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 rounded transition-all duration-150"
-                            defaultValue={rightTask.km != null ? Number(rightTask.km) : ""}
+                            defaultValue={
+                              rightTask.km != null ? Number(rightTask.km) : ""
+                            }
                             placeholder="KM"
-                            onBlur={(e) => handleKmChange(rightTask.id, e.target.value)}
+                            onBlur={(e) =>
+                              handleKmChange(rightTask.id, e.target.value)
+                            }
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 e.currentTarget.blur();
@@ -700,7 +888,10 @@ export function ExcelView() {
               })}
               {maxRegularRows === 0 && (
                 <tr>
-                  <td colSpan={14} className="p-8 text-center text-muted-foreground">
+                  <td
+                    colSpan={14}
+                    className="p-8 text-center text-muted-foreground"
+                  >
                     Seçilen güne ait düzenli sefer kaydı bulunmamaktadır.
                   </td>
                 </tr>
@@ -714,11 +905,17 @@ export function ExcelView() {
       <Card className="overflow-hidden border-slate-200/80 shadow-sm max-h-[300px] flex flex-col">
         <div className="p-3 border-b bg-card shrink-0 flex items-center justify-between">
           <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+            <Badge
+              variant="outline"
+              className="bg-amber-100 text-amber-800 border-amber-300"
+            >
               EKSTRA GİDER (OTEL / AÇIKLAMA)
             </Badge>
             <span className="text-muted-foreground text-xs">&bull;</span>
-            <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-300">
+            <Badge
+              variant="outline"
+              className="bg-emerald-100 text-emerald-800 border-emerald-300"
+            >
               EKSTRA GELİR (OTEL / AÇIKLAMA)
             </Badge>
           </h3>
@@ -805,28 +1002,62 @@ export function ExcelView() {
                 const rightExtraCancelled = rightExtra?.status === "cancelled";
 
                 return (
-                  <tr key={idx} className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors">
+                  <tr
+                    key={idx}
+                    className="divide-x divide-border hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors"
+                  >
                     {/* Left Extras Cells */}
                     {leftExtra ? (
                       <>
-                        <td className={`p-1.5 text-center font-bold ${leftExtraCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}>{idx + 1}</td>
-                        <td className={`p-1.5 text-center font-bold bg-amber-50/10 ${leftExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}>
+                        <td
+                          className={`p-1.5 text-center font-bold ${leftExtraCancelled ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                        >
+                          {idx + 1}
+                        </td>
+                        <td
+                          className={`p-1.5 text-center font-bold bg-amber-50/10 ${leftExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                        >
                           {format(new Date(leftExtra.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1 ${leftExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
+                        <td
+                          className={`p-1 ${leftExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
+                        >
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={leftExtra.status === "cancelled" ? "cancelled" : (leftExtra.vehicleId ?? (getPlateFromNotes(leftExtra.notes) ? `custom:${getPlateFromNotes(leftExtra.notes)}` : ""))}
-                            onChange={(e) => handlePlateChange(leftExtra, e.target.value)}
+                            value={
+                              leftExtra.status === "cancelled"
+                                ? "cancelled"
+                                : (leftExtra.vehicleId ??
+                                  (getPlateFromNotes(leftExtra.notes)
+                                    ? `custom:${getPlateFromNotes(leftExtra.notes)}`
+                                    : ""))
+                            }
+                            onChange={(e) =>
+                              handlePlateChange(leftExtra, e.target.value)
+                            }
                           >
                             <option value="">Plaka Seçin...</option>
-                            <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
-                            <option value="custom_prompt" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
-                            {leftExtra.vehicleId === null && getPlateFromNotes(leftExtra.notes) && (
-                              <option value={`custom:${getPlateFromNotes(leftExtra.notes)}`} className="font-bold text-blue-600">
-                                {getPlateFromNotes(leftExtra.notes)} (Özel)
-                              </option>
-                            )}
+                            <option
+                              value="cancelled"
+                              className="text-red-600 font-bold"
+                            >
+                              İPTAL
+                            </option>
+                            <option
+                              value="custom_prompt"
+                              className="text-blue-600 font-bold"
+                            >
+                              ✍️ Özel Plaka Yaz...
+                            </option>
+                            {leftExtra.vehicleId === null &&
+                              getPlateFromNotes(leftExtra.notes) && (
+                                <option
+                                  value={`custom:${getPlateFromNotes(leftExtra.notes)}`}
+                                  className="font-bold text-blue-600"
+                                >
+                                  {getPlateFromNotes(leftExtra.notes)} (Özel)
+                                </option>
+                              )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -834,13 +1065,20 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 font-medium ${leftExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`} title={leftExtra.pickupLocation}>
-                          <div className="truncate w-full block whitespace-nowrap">{leftExtra.pickupLocation}</div>
+                        <td
+                          className={`p-1.5 font-medium ${leftExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                          title={leftExtra.pickupLocation}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {leftExtra.pickupLocation}
+                          </div>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">{idx + 1}</td>
+                        <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
+                          {idx + 1}
+                        </td>
                         <td colSpan={3} className="bg-slate-50/10"></td>
                       </>
                     )}
@@ -851,23 +1089,50 @@ export function ExcelView() {
                     {/* Right Extras Cells */}
                     {rightExtra ? (
                       <>
-                        <td className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rightExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}>
+                        <td
+                          className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rightExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
+                        >
                           {format(new Date(rightExtra.scheduledTime), "HH:mm")}
                         </td>
-                        <td className={`p-1 ${rightExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
+                        <td
+                          className={`p-1 ${rightExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
+                        >
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={rightExtra.status === "cancelled" ? "cancelled" : (rightExtra.vehicleId ?? (getPlateFromNotes(rightExtra.notes) ? `custom:${getPlateFromNotes(rightExtra.notes)}` : ""))}
-                            onChange={(e) => handlePlateChange(rightExtra, e.target.value)}
+                            value={
+                              rightExtra.status === "cancelled"
+                                ? "cancelled"
+                                : (rightExtra.vehicleId ??
+                                  (getPlateFromNotes(rightExtra.notes)
+                                    ? `custom:${getPlateFromNotes(rightExtra.notes)}`
+                                    : ""))
+                            }
+                            onChange={(e) =>
+                              handlePlateChange(rightExtra, e.target.value)
+                            }
                           >
                             <option value="">Plaka Seçin...</option>
-                            <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
-                            <option value="custom_prompt" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
-                            {rightExtra.vehicleId === null && getPlateFromNotes(rightExtra.notes) && (
-                              <option value={`custom:${getPlateFromNotes(rightExtra.notes)}`} className="font-bold text-blue-600">
-                                {getPlateFromNotes(rightExtra.notes)} (Özel)
-                              </option>
-                            )}
+                            <option
+                              value="cancelled"
+                              className="text-red-600 font-bold"
+                            >
+                              İPTAL
+                            </option>
+                            <option
+                              value="custom_prompt"
+                              className="text-blue-600 font-bold"
+                            >
+                              ✍️ Özel Plaka Yaz...
+                            </option>
+                            {rightExtra.vehicleId === null &&
+                              getPlateFromNotes(rightExtra.notes) && (
+                                <option
+                                  value={`custom:${getPlateFromNotes(rightExtra.notes)}`}
+                                  className="font-bold text-blue-600"
+                                >
+                                  {getPlateFromNotes(rightExtra.notes)} (Özel)
+                                </option>
+                              )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -875,8 +1140,13 @@ export function ExcelView() {
                             ))}
                           </select>
                         </td>
-                        <td className={`p-1.5 font-medium ${rightExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`} title={rightExtra.pickupLocation}>
-                          <div className="truncate w-full block whitespace-nowrap">{rightExtra.pickupLocation}</div>
+                        <td
+                          className={`p-1.5 font-medium ${rightExtraCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`}
+                          title={rightExtra.pickupLocation}
+                        >
+                          <div className="truncate w-full block whitespace-nowrap">
+                            {rightExtra.pickupLocation}
+                          </div>
                         </td>
                       </>
                     ) : (
@@ -887,7 +1157,10 @@ export function ExcelView() {
               })}
               {maxExtraRows === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                  <td
+                    colSpan={8}
+                    className="p-6 text-center text-muted-foreground"
+                  >
                     Seçilen güne ait ekstra sefer kaydı bulunmamaktadır.
                   </td>
                 </tr>
