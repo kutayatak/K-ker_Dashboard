@@ -229,4 +229,15 @@ router.get("/has", async (req, res) => {
   return res.json({ exists: !!file, filename: file?.filename ?? null, uploadedAt: file?.uploadedAt ?? null });
 });
 
+// GET /excel/debug-tasks
+// Returns the last 100 tasks in the database for debugging
+router.get("/debug-tasks", async (req, res) => {
+  const tasks = await db
+    .select()
+    .from(tasksTable)
+    .orderBy(sql`${tasksTable.id} DESC`)
+    .limit(100);
+  return res.json(tasks);
+});
+
 export default router;
