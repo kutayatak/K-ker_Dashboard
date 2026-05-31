@@ -80,7 +80,6 @@ const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "technical", label: "Teknik İşler", short: "Teknik" },
   { key: "completed", label: "Tamamlandı", short: "Tamam" },
   { key: "cancelled", label: "İptaller", short: "İptal" },
-  { key: "km", label: "KM Girişi", short: "KM" },
 ];
 
 export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
@@ -272,9 +271,9 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     )
     .sort(sortTasksByTime);
   const isGelirTask = (t: Task) =>
-    t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
+    t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gelir";
   const isGiderTask = (t: Task) =>
-    t.type === "hotel_pickup" ||
+    t.type === "airport_run" ||
     t.dropoffLocation === "Ekstra Gider" ||
     (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
 
@@ -790,37 +789,7 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         </div>
       </div>
 
-      {/* ── KM Girişi toggle bar — always visible ─────────────────────── */}
-      <div className="flex items-center gap-2 mb-2">
-        <button
-          onClick={() =>
-            setActiveTab((prev) => (prev === "km" ? "gelir" : "km"))
-          }
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border transition-all ${
-            activeTab === "km"
-              ? "bg-violet-600 text-white border-violet-600 shadow-sm"
-              : "bg-white dark:bg-slate-900 text-violet-700 dark:text-violet-400 border-violet-300 dark:border-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/30"
-          }`}
-        >
-          <span>KM Girişi</span>
-          {kmGroups.length > 0 && (
-            <span
-              className={`inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-[10px] font-mono px-1 ${
-                activeTab === "km"
-                  ? "bg-white/20 text-white"
-                  : "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
-              }`}
-            >
-              {kmGroups.length}
-            </span>
-          )}
-        </button>
-        {activeTab === "km" && (
-          <span className="text-xs text-muted-foreground">
-            KM eksik rotalar — bir kez girin, tüm eşleşen görevlere uygulanır
-          </span>
-        )}
-      </div>
+
 
       {/* ── Mobile tab bar ───────────────────────────────────────────── */}
       {(() => {

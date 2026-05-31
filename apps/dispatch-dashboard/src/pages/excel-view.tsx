@@ -1375,14 +1375,14 @@ export function ExcelView() {
                   variant="outline"
                   className="bg-blue-50 text-blue-700 border-blue-200"
                 >
-                  GELİR (GELEN UÇUŞLAR)
+                  GELİR (HAVAALANINA)
                 </Badge>
                 <span className="text-muted-foreground text-xs">&bull;</span>
                 <Badge
                   variant="outline"
                   className="bg-amber-50 text-amber-700 border-amber-200"
                 >
-                  GİDER (GİDEN UÇUŞLAR)
+                  GİDER (HAVAALANINDAN)
                 </Badge>
               </h3>
               <div className="flex items-center gap-3">

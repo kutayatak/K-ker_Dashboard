@@ -565,7 +565,7 @@ export function Reports() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div className="h-full w-full min-w-0 flex flex-col gap-4 overflow-x-hidden">
       {/* ── Page Header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -577,46 +577,48 @@ export function Reports() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRefresh}
-            disabled={tasksPending || isLoading}
-          >
-            <RefreshCw
-              className={`w-4 h-4 ${tasksPending || isLoading ? "animate-spin" : ""}`}
-            />
-            <span className="hidden md:inline ml-1.5">Yenile</span>
-          </Button>
-
-          {activeTab === "accounting" && (
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 w-full lg:w-auto">
+          <div className="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-start">
             <Button
-              onClick={exportToCSV}
-              variant="outline"
               size="sm"
-              className="shadow-sm border-slate-200"
-            >
-              <Download className="w-4 h-4 mr-2" /> Esnaf Raporu CSV Aktar
-            </Button>
-          )}
-
-          {activeTab === "technical" && (
-            <Button
-              onClick={exportTechnicalToCSV}
               variant="outline"
-              size="sm"
-              className="shadow-sm border-slate-200"
+              onClick={handleRefresh}
+              disabled={tasksPending || isLoading}
             >
-              <Download className="w-4 h-4 mr-2" /> Teknik Rapor CSV Aktar
+              <RefreshCw
+                className={`w-4 h-4 ${tasksPending || isLoading ? "animate-spin" : ""}`}
+              />
+              <span className="hidden md:inline ml-1.5">Yenile</span>
             </Button>
-          )}
 
-          <div className="flex bg-muted p-1 rounded-lg border border-slate-100 dark:border-slate-800 shrink-0 overflow-x-auto w-full sm:w-auto scrollbar-none">
+            {activeTab === "accounting" && (
+              <Button
+                onClick={exportToCSV}
+                variant="outline"
+                size="sm"
+                className="shadow-sm border-slate-200"
+              >
+                <Download className="w-4 h-4 mr-2" /> Esnaf CSV Aktar
+              </Button>
+            )}
+
+            {activeTab === "technical" && (
+              <Button
+                onClick={exportTechnicalToCSV}
+                variant="outline"
+                size="sm"
+                className="shadow-sm border-slate-200"
+              >
+                <Download className="w-4 h-4 mr-2" /> Teknik CSV Aktar
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row bg-muted p-1 rounded-lg border border-slate-100 dark:border-slate-800 shrink-0 w-full lg:w-auto gap-1">
             <Button
               variant={activeTab === "analytics" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
+              className="h-8 sm:h-7 px-3 text-xs w-full sm:w-auto shrink-0"
               onClick={() => setActiveTab("analytics")}
             >
               Analitik Görünüm
@@ -624,7 +626,7 @@ export function Reports() {
             <Button
               variant={activeTab === "accounting" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
+              className="h-8 sm:h-7 px-3 text-xs w-full sm:w-auto shrink-0"
               onClick={() => setActiveTab("accounting")}
             >
               Esnaf Sefer Listesi
@@ -632,7 +634,7 @@ export function Reports() {
             <Button
               variant={activeTab === "technical" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
+              className="h-8 sm:h-7 px-3 text-xs w-full sm:w-auto shrink-0"
               onClick={() => setActiveTab("technical")}
             >
               Teknik İşler Raporu
@@ -904,13 +906,13 @@ export function Reports() {
                     <>
                       <div
                         className="bg-blue-500 h-full transition-all duration-500"
-                        style={{ width: `${typePercentages.airport_run}%` }}
-                        title={`Gelir Seferleri: %${typePercentages.airport_run.toFixed(1)}`}
+                        style={{ width: `${typePercentages.hotel_pickup}%` }}
+                        title={`Gelir Seferleri: %${typePercentages.hotel_pickup.toFixed(1)}`}
                       />
                       <div
                         className="bg-emerald-500 h-full transition-all duration-500"
-                        style={{ width: `${typePercentages.hotel_pickup}%` }}
-                        title={`Gider Seferleri: %${typePercentages.hotel_pickup.toFixed(1)}`}
+                        style={{ width: `${typePercentages.airport_run}%` }}
+                        title={`Gider Seferleri: %${typePercentages.airport_run.toFixed(1)}`}
                       />
                       <div
                         className="bg-amber-500 h-full transition-all duration-500"
@@ -933,11 +935,11 @@ export function Reports() {
                     <span className="w-3 h-3 rounded bg-blue-500 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        Gelir (Havalimanı)
+                        Gelir (Havaalanına)
                       </div>
                       <div className="font-bold">
-                        {typeCounts.airport_run} sefer (%
-                        {typePercentages.airport_run.toFixed(1)})
+                        {typeCounts.hotel_pickup} sefer (%
+                        {typePercentages.hotel_pickup.toFixed(1)})
                       </div>
                     </div>
                   </div>
@@ -946,11 +948,11 @@ export function Reports() {
                     <span className="w-3 h-3 rounded bg-emerald-500 shrink-0" />
                     <div className="min-w-0">
                       <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        Gider (Otel Alım)
+                        Gider (Havaalanından)
                       </div>
                       <div className="font-bold">
-                        {typeCounts.hotel_pickup} sefer (%
-                        {typePercentages.hotel_pickup.toFixed(1)})
+                        {typeCounts.airport_run} sefer (%
+                        {typePercentages.airport_run.toFixed(1)})
                       </div>
                     </div>
                   </div>
