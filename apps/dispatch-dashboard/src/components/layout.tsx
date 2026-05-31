@@ -22,6 +22,7 @@ import {
   Sun,
   FileSpreadsheet,
   FolderOpen,
+  Milestone,
 } from "lucide-react";
 
 /* ── Dark mode hook ─────────────────────────────────────────────────────── */
@@ -53,6 +54,7 @@ export function AppSidebar() {
 
   const navigation = [
     { name: "Sevkiyat Paneli", href: "/", icon: Plane },
+    { name: "KM Girişi", href: "/km", icon: Milestone },
     { name: "Excel Görünümü", href: "/excel-view", icon: FileSpreadsheet },
     { name: "Yüklenen Dosyalar", href: "/files", icon: FolderOpen },
     { name: "Araçlar", href: "/vehicles", icon: Car },
@@ -97,7 +99,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       {/* ── Dark mode toggle at sidebar bottom ─────────────────────────── */}
-      <SidebarFooter className="p-3 border-t">
+      <SidebarFooter className="p-3 border-t flex flex-col gap-2">
         <button
           onClick={toggle}
           className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium
@@ -140,6 +142,12 @@ export function AppSidebar() {
             {dark ? "Açık" : "Koyu"}
           </span>
         </button>
+
+        {/* Current year and creator name */}
+        <div className="px-3 py-1.5 flex items-center justify-between text-[11px] font-semibold text-sidebar-foreground/45 select-none border-t border-sidebar-foreground/5 pt-2">
+          <span>© {new Date().getFullYear()}</span>
+          <span className="tracking-wide">Kutay</span>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

@@ -37,7 +37,8 @@ function App() {
               <Layout>
                 <Suspense fallback={<div className="flex h-full items-center justify-center p-8">Yükleniyor...</div>}>
                   <Switch>
-                    <Route path="/" component={Board} />
+                    <Route path="/" component={() => <Board />} />
+                    <Route path="/km" component={() => <Board initialTab="km" />} />
                     <Route path="/excel-view" component={ExcelView} />
                     <Route path="/vehicles" component={Vehicles} />
                     <Route path="/import" component={ImportTasks} />

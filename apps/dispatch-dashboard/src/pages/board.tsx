@@ -83,9 +83,16 @@ const TABS: { key: TabKey; label: string; short: string }[] = [
   { key: "km", label: "KM Girişi", short: "KM" },
 ];
 
-export function Board() {
+export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabKey>("gelir");
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "gelir");
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   const [selectedDate, setSelectedDate] = useState<string>(
     () => new Date().toISOString().split("T")[0],
   );
