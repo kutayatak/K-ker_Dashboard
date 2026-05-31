@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   useListAccountingRecords,
   useGetAccountingSummary,
@@ -32,6 +32,7 @@ import {
   Calendar,
   PieChart,
   ArrowRightLeft,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -231,9 +232,58 @@ export function Reports() {
 
   const months = Array.from(
     new Set(
-      technicalTasks.map((t) => t.scheduledTime.substring(0, 7)), // UTC month,
+      tasks.map((t) => t.scheduledTime.substring(0, 7)), // UTC month "YYYY-MM"
     ),
   ).sort((a, b) => b.localeCompare(a));
+
+  const outsourceVehicles = vehicles.filter((v) => v.type === "outsource");
+  const outsourceVehicleIds = useMemo(() => new Set(outsourceVehicles.map((v) => v.id)), [outsourceVehicles]);
+
+  const filteredRecords = useMemo(() => {
+    return records.filter((r) => {
+      const isOutsource = outsourceVehicleIds.has(r.vehicleId);
+      if (!isOutsource) return false;
+
+      const monthStr = r.date.substring(0, 7); // YYYY-MM
+      const matchesMonth = selectedMonth === "all" || monthStr === selectedMonth;
+
+      const query = searchQuery.toLowerCase().trim();
+      const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+      const textToSearch = `${r.vehicleName || ""} ${vInfo?.driverName || ""} ${r.notes || ""} #görev_${r.taskId}`.toLowerCase();
+      const matchesQuery = !query || textToSearch.includes(query);
+
+      return matchesMonth && matchesQuery;
+    });
+  }, [records, outsourceVehicleIds, selectedMonth, searchQuery, vehicles]);
+
+  const outsourceVehicleSummaries = useMemo(() => {
+    const map = new Map<number, { vehicleId: number; vehicleName: string; driverName: string; totalRevenue: number; tripCount: number }>();
+    
+    // Initialize with all outsource vehicles
+    outsourceVehicles.forEach((v) => {
+      map.set(v.id, {
+        vehicleId: v.id,
+        vehicleName: v.plate || v.name,
+        driverName: v.driverName || "Belirtilmedi",
+        totalRevenue: 0,
+        tripCount: 0,
+      });
+    });
+
+    // Populate from filtered records
+    filteredRecords.forEach((r) => {
+      const existing = map.get(r.vehicleId);
+      if (existing) {
+        existing.totalRevenue += Number(r.amount);
+        existing.tripCount += 1;
+      }
+    });
+
+    // Convert to array and sort by revenue descending
+    return Array.from(map.values())
+      .filter((s) => s.tripCount > 0 || outsourceVehicles.length <= 10)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }, [outsourceVehicles, filteredRecords]);
 
   const filteredTechnicalTasks = technicalTasks
     .filter((t) => {
@@ -254,18 +304,22 @@ export function Reports() {
         new Date(a.scheduledTime).getTime(),
     );
 
-  // CSV Export for accounting records
+  // CSV Export for Esnaf Sefer Listesi
   const exportToCSV = () => {
-    if (!records.length) return;
-    const headers = ["ID", "Tarih", "Araç", "Görev ID", "Tutar", "Notlar"];
-    const rows = records.map((r) => [
-      r.id,
-      format(new Date(r.date), "yyyy-MM-dd HH:mm"),
-      r.vehicleName || `Araç ${r.vehicleId}`,
-      r.taskId,
-      r.amount,
-      r.notes || "",
-    ]);
+    if (!filteredRecords.length) return;
+    const headers = ["ID", "Tarih", "Araç / Plaka", "Sürücü", "Görev ID", "Hak Ediş Tutarı", "Özel Notlar"];
+    const rows = filteredRecords.map((r) => {
+      const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+      return [
+        r.id,
+        format(new Date(r.date), "yyyy-MM-dd HH:mm"),
+        r.vehicleName || `Araç ${r.vehicleId}`,
+        vInfo?.driverName || "Belirtilmedi",
+        r.taskId,
+        r.amount,
+        r.notes || "",
+      ];
+    });
 
     const csvContent = [
       headers.join(","),
@@ -283,7 +337,7 @@ export function Reports() {
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `koker_muhasebe_${format(new Date(), "yyyyMMdd")}.csv`,
+      `esnaf_sefer_listesi_${selectedMonth}_${format(new Date(), "yyyyMMdd")}.csv`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
@@ -393,7 +447,7 @@ export function Reports() {
               size="sm"
               className="shadow-sm border-slate-200"
             >
-              <Download className="w-4 h-4 mr-2" /> CSV Dışa Aktar
+              <Download className="w-4 h-4 mr-2" /> Esnaf Raporu CSV Aktar
             </Button>
           )}
 
@@ -423,7 +477,7 @@ export function Reports() {
               className="h-7 px-3 text-xs"
               onClick={() => setActiveTab("accounting")}
             >
-              Finansal Sefer Listesi
+              Esnaf Sefer Listesi
             </Button>
             <Button
               variant={activeTab === "technical" ? "default" : "ghost"}
@@ -436,6 +490,55 @@ export function Reports() {
           </div>
         </div>
       </div>
+
+      {activeTab !== "analytics" && (
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-2 bg-muted/40 p-3 rounded-lg border border-border/50 shrink-0 shadow-xs select-none">
+          <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
+              Filtrele:
+            </span>
+
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-background border border-input h-8 px-2 rounded-md text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+            >
+              <option value="all">Tüm Aylar</option>
+              {months.map((m) => {
+                const [year, month] = m.split("-");
+                const monthName = format(
+                  new Date(Number(year), Number(month) - 1, 1),
+                  "MMMM yyyy",
+                  { locale: tr },
+                );
+                return (
+                  <option key={m} value={m}>
+                    {monthName}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Plaka, sürücü, açıklama ara..."
+              className="w-full bg-background border border-input h-8 pl-3 pr-8 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder-muted-foreground shadow-xs"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {activeTab === "analytics" ? (
         <div className="flex-1 space-y-4 overflow-y-auto pr-1 pb-12 select-none scrollbar-none">
@@ -734,35 +837,42 @@ export function Reports() {
         </div>
       ) : activeTab === "accounting" ? (
         <>
-          {/* ── Financial Summary Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
-            {summary.map((s) => (
+          {/* ── Esnaf Sefer Listesi Summary Cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none">
+            {outsourceVehicleSummaries.map((s) => (
               <Card
                 key={s.vehicleId}
-                className="border-slate-100 dark:border-slate-800 shadow-sm"
+                className="border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200"
               >
-                <CardContent className="p-4">
-                  <div
-                    className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1 truncate"
-                    title={s.vehicleName}
-                  >
-                    {s.vehicleName}
+                <CardContent className="p-4 flex flex-col justify-between h-full">
+                  <div>
+                    <div
+                      className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider mb-1 truncate"
+                      title={s.vehicleName}
+                    >
+                      {s.vehicleName}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-medium truncate">
+                      {s.driverName}
+                    </div>
                   </div>
-                  <div className="text-xl font-extrabold text-foreground">
-                    ₺
-                    {s.totalRevenue.toLocaleString("tr-TR", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1 font-mono">
-                    {s.tripCount} tamamlanan sefer
+                  <div className="mt-2">
+                    <div className="text-lg font-extrabold text-foreground tracking-tight">
+                      ₺
+                      {s.totalRevenue.toLocaleString("tr-TR", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                      {s.tripCount} tamamlanan sefer
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
 
-          {/* ── Financial Sefer List Table ── */}
+          {/* ── Esnaf Sefer List Table ── */}
           <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-2">
             <div className="overflow-auto flex-1 select-none">
               <Table>
@@ -772,7 +882,10 @@ export function Reports() {
                       Tarih
                     </TableHead>
                     <TableHead className="font-semibold text-xs tracking-wider uppercase">
-                      Araç / Plaka
+                      Esnaf / Plaka
+                    </TableHead>
+                    <TableHead className="font-semibold text-xs tracking-wider uppercase">
+                      Sürücü
                     </TableHead>
                     <TableHead className="font-semibold text-xs tracking-wider uppercase">
                       Görev ID
@@ -789,51 +902,56 @@ export function Reports() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="text-center py-12 text-muted-foreground"
                       >
                         Kayıtlar yükleniyor...
                       </TableCell>
                     </TableRow>
-                  ) : records.length === 0 ? (
+                  ) : filteredRecords.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="text-center py-12 text-muted-foreground"
                       >
-                        Herhangi bir tamamlanmış finansal hak ediş kaydı
-                        bulunamadı.
+                        Seçilen ayda tamamlanmış esnaf sefer kaydı bulunamadı.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    records.map((r) => (
-                      <TableRow
-                        key={r.id}
-                        className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10"
-                      >
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {format(new Date(r.date), "yyyy-MM-dd HH:mm")}
-                        </TableCell>
-                        <TableCell className="font-bold text-foreground">
-                          {r.vehicleName}
-                        </TableCell>
-                        <TableCell className="font-mono text-muted-foreground text-xs">
-                          #görev_{r.taskId}
-                        </TableCell>
-                        <TableCell className="font-extrabold text-emerald-600 dark:text-emerald-400">
-                          ₺
-                          {Number(r.amount).toLocaleString("tr-TR", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                        <TableCell
-                          className="text-muted-foreground text-xs font-medium truncate max-w-[200px]"
-                          title={r.notes ?? ""}
+                    filteredRecords.map((r) => {
+                      const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+                      return (
+                        <TableRow
+                          key={r.id}
+                          className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10"
                         >
-                          {r.notes || "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {format(new Date(r.date), "yyyy-MM-dd HH:mm")}
+                          </TableCell>
+                          <TableCell className="font-bold text-foreground">
+                            {r.vehicleName}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {vInfo?.driverName || "Belirtilmedi"}
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground text-xs">
+                            #görev_{r.taskId}
+                          </TableCell>
+                          <TableCell className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                            ₺
+                            {Number(r.amount).toLocaleString("tr-TR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </TableCell>
+                          <TableCell
+                            className="text-muted-foreground text-xs font-medium truncate max-w-[200px]"
+                            title={r.notes ?? ""}
+                          >
+                            {r.notes || "-"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -842,53 +960,6 @@ export function Reports() {
         </>
       ) : (
         <>
-          {/* ── Teknik İşler Raporu Filtre Barı ── */}
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between mb-2 bg-muted/40 p-3 rounded-lg border border-border/50 shrink-0 shadow-xs">
-            <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
-                Filtrele:
-              </span>
-
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-background border border-input h-8 px-2 rounded-md text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-              >
-                <option value="all">Tüm Aylar</option>
-                {months.map((m) => {
-                  const [year, month] = m.split("-");
-                  const monthName = format(
-                    new Date(Number(year), Number(month) - 1, 1),
-                    "MMMM yyyy",
-                    { locale: tr },
-                  );
-                  return (
-                    <option key={m} value={m}>
-                      {monthName}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className="relative w-full sm:w-64">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Plaka, sürücü, açıklama ara..."
-                className="w-full bg-background border border-input h-8 pl-3 pr-8 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-primary placeholder-muted-foreground shadow-xs"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs font-bold"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          </div>
 
           {/* ── Teknik İşler Raporu Tablosu ── */}
           <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-1">
