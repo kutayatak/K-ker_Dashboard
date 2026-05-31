@@ -15,6 +15,7 @@ const ImportTasks = lazy(() => import("@/pages/import").then(m => ({ default: m.
 const Reports = lazy(() => import("@/pages/reports").then(m => ({ default: m.Reports })));
 const ExcelView = lazy(() => import("@/pages/excel-view").then(m => ({ default: m.ExcelView })));
 const StoredFiles = lazy(() => import("@/pages/files").then(m => ({ default: m.StoredFiles })));
+const ExtraReview = lazy(() => import("@/pages/extra-review").then(m => ({ default: m.ExtraReview })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +46,7 @@ function App() {
                       <Route path="/vehicles" component={Vehicles} />
                       <Route path="/import" component={ImportTasks} />
                       <Route path="/reports" component={Reports} />
+                      <Route path="/extra-review" component={ExtraReview} />
                       <Route path="/files" component={StoredFiles} />
                       <Route component={NotFound} />
                     </Switch>

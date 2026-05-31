@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   FolderOpen,
   Milestone,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -40,6 +41,7 @@ export function AppSidebar() {
     { name: "Araçlar", href: "/vehicles", icon: Car },
     { name: "Veri İçe Aktar", href: "/import", icon: Upload },
     { name: "Raporlar", href: "/reports", icon: BarChart3 },
+    { name: "Ekstra İşler İnceleme", href: "/extra-review", icon: Sparkles },
   ];
 
   return (
