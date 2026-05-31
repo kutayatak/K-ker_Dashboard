@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { db, excelFilesTable, tasksTable, vehiclesTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 const router = Router();
 
 // GET /excel/download?date=YYYY-MM-DD
 // Returns the stored Excel file with plate values written to the correct cells
-router.get("/download", async (req, res) => {
+router.get("/download", async (req: any, res: any) => {
   const date = req.query.date as string;
   if (!date) return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
 
@@ -20,7 +20,8 @@ router.get("/download", async (req, res) => {
 
   // Decode base64 → buffer → workbook
   const buf = Buffer.from(file.data, "base64");
-  const wb = XLSX.read(buf, { type: "buffer", cellStyles: true, bookVBA: true });
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf as any);
 
   // Fetch tasks for this shift date (D 06:00 to D+1 05:59)
   const shiftStart = new Date(date);
@@ -61,18 +62,19 @@ router.get("/download", async (req, res) => {
   };
 
   // Write plates and KM into sheet 1 (index 0) — first sheet is the main list
-  const ws = wb.Sheets[wb.SheetNames[0]];
+  const ws = wb.worksheets[0];
   if (ws) {
     for (const task of tasks) {
       if (task.rowIndex == null) continue;
       const row = task.rowIndex; // 1-based Excel row
 
       if (task.tableType === "left") {
-        // GELİR — left table: PLAKA = C, KM = G (col indices 2, 6)
+        // GELİR — left table: PLAKA = C, KM = G
+        const cellPlate = ws.getCell(`C${row}`);
+        const cellKm = ws.getCell(`G${row}`);
+
         if (task.status === "cancelled") {
-          if (!ws[`C${row}`]) ws[`C${row}`] = {};
-          ws[`C${row}`].v = "İPTAL";
-          ws[`C${row}`].t = "s";
+          cellPlate.value = "İPTAL";
         } else {
           let plate = "";
           if (task.vehicleId) {
@@ -81,35 +83,31 @@ router.get("/download", async (req, res) => {
             plate = getPlateFromNotes(task.notes);
           }
           if (plate) {
-            if (!ws[`C${row}`]) ws[`C${row}`] = {};
-            ws[`C${row}`].v = plate;
-            ws[`C${row}`].t = "s";
+            cellPlate.value = plate;
           }
         }
         if (task.km) {
-          if (!ws[`G${row}`]) ws[`G${row}`] = {};
-          ws[`G${row}`].v = Number(task.km);
-          ws[`G${row}`].t = "n";
+          cellKm.value = Number(task.km);
         }
 
         // Apply yellow background to technical tasks if possible
         if (task.type === "technical") {
           ["B", "C", "D", "G"].forEach((col) => {
-            if (!ws[`${col}${row}`]) ws[`${col}${row}`] = {};
-            ws[`${col}${row}`].s = {
-              fill: {
-                patternType: "solid",
-                fgColor: { rgb: "FFFF00" }
-              }
+            const cell = ws.getCell(`${col}${row}`);
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" }
             };
           });
         }
       } else if (task.tableType === "right") {
-        // GİDER — right table: PLAKA = I, KM = M (col indices 8, 12)
+        // GİDER — right table: PLAKA = I, KM = M
+        const cellPlate = ws.getCell(`I${row}`);
+        const cellKm = ws.getCell(`M${row}`);
+
         if (task.status === "cancelled") {
-          if (!ws[`I${row}`]) ws[`I${row}`] = {};
-          ws[`I${row}`].v = "İPTAL";
-          ws[`I${row}`].t = "s";
+          cellPlate.value = "İPTAL";
         } else {
           let plate = "";
           if (task.vehicleId) {
@@ -118,26 +116,21 @@ router.get("/download", async (req, res) => {
             plate = getPlateFromNotes(task.notes);
           }
           if (plate) {
-            if (!ws[`I${row}`]) ws[`I${row}`] = {};
-            ws[`I${row}`].v = plate;
-            ws[`I${row}`].t = "s";
+            cellPlate.value = plate;
           }
         }
         if (task.km) {
-          if (!ws[`M${row}`]) ws[`M${row}`] = {};
-          ws[`M${row}`].v = Number(task.km);
-          ws[`M${row}`].t = "n";
+          cellKm.value = Number(task.km);
         }
 
         // Apply yellow background to technical tasks if possible
         if (task.type === "technical") {
           ["H", "I", "J", "M"].forEach((col) => {
-            if (!ws[`${col}${row}`]) ws[`${col}${row}`] = {};
-            ws[`${col}${row}`].s = {
-              fill: {
-                patternType: "solid",
-                fgColor: { rgb: "FFFF00" }
-              }
+            const cell = ws.getCell(`${col}${row}`);
+            cell.fill = {
+              type: "pattern",
+              pattern: "solid",
+              fgColor: { argb: "FFFFFFFF" }
             };
           });
         }
@@ -146,7 +139,7 @@ router.get("/download", async (req, res) => {
   }
 
   // Write back to buffer — preserve existing format
-  const outBuf = XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true });
+  const outBuf = await wb.xlsx.writeBuffer();
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="sevkiyat_${date}.xlsx"`);
