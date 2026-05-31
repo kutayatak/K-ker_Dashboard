@@ -14,7 +14,12 @@ import {
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -48,34 +53,52 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+// Read HH:mm directly from the UTC ISO string to avoid local-timezone offset.
+const utcTime = (iso: string) => iso?.substring(11, 16) ?? "--:--";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 
-type TabKey = "queue" | "gelir" | "gider" | "technical" | "completed" | "cancelled";
+type TabKey =
+  | "queue"
+  | "gelir"
+  | "gider"
+  | "technical"
+  | "completed"
+  | "cancelled";
 
 const TABS: { key: TabKey; label: string; short: string }[] = [
-  { key: "queue",       label: "Kuyruk",       short: "Kuyruk" },
-  { key: "gelir",       label: "Gelir",        short: "Gelir" },
-  { key: "gider",       label: "Gider",        short: "Gider" },
-  { key: "technical",   label: "Teknik İşler",  short: "Teknik" },
-  { key: "completed",   label: "Tamamlandı",   short: "Tamam"  },
-  { key: "cancelled",   label: "İptaller",     short: "İptal"  },
+  { key: "queue", label: "Kuyruk", short: "Kuyruk" },
+  { key: "gelir", label: "Gelir", short: "Gelir" },
+  { key: "gider", label: "Gider", short: "Gider" },
+  { key: "technical", label: "Teknik İşler", short: "Teknik" },
+  { key: "completed", label: "Tamamlandı", short: "Tamam" },
+  { key: "cancelled", label: "İptaller", short: "İptal" },
 ];
 
 export function Board() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>("gelir");
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(
+    () => new Date().toISOString().split("T")[0],
+  );
 
   const { data: queue = [] } = useGetVehicleQueue({
     query: { queryKey: ["/api/vehicles/queue"] },
   });
-  const { data: vehicles = [] } = useListVehicles({}, { query: { queryKey: ["/api/vehicles"] } });
+  const { data: vehicles = [] } = useListVehicles(
+    {},
+    { query: { queryKey: ["/api/vehicles"] } },
+  );
   const updateVehicleMutation = useUpdateVehicle();
 
   const [localQueue, setLocalQueue] = useState<any[]>([]);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
 
@@ -119,50 +142,64 @@ export function Board() {
   };
 
   const handleRemoveFromQueue = (vehicleId: number) => {
-    updateVehicleMutation.mutate({
-      id: vehicleId,
-      data: {
-        status: "offline",
-        queuePosition: null,
-      }
-    }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
-      }
-    });
+    updateVehicleMutation.mutate(
+      {
+        id: vehicleId,
+        data: {
+          status: "offline",
+          queuePosition: null,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+        },
+      },
+    );
   };
 
   const handleAddToQueue = () => {
     if (!selectedVehicleId) return;
     const vId = Number(selectedVehicleId);
-    const maxPos = queue.reduce((max: number, v: any) => Math.max(max, v.queuePosition ?? 0), 0);
-    
-    updateVehicleMutation.mutate({
-      id: vId,
-      data: {
-        status: "empty",
-        queuePosition: maxPos + 1,
-      }
-    }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
-        setIsAddOpen(false);
-        setSelectedVehicleId("");
-      }
-    });
+    const maxPos = queue.reduce(
+      (max: number, v: any) => Math.max(max, v.queuePosition ?? 0),
+      0,
+    );
+
+    updateVehicleMutation.mutate(
+      {
+        id: vId,
+        data: {
+          status: "empty",
+          queuePosition: maxPos + 1,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ["/api/vehicles/queue"] });
+          setIsAddOpen(false);
+          setSelectedVehicleId("");
+        },
+      },
+    );
   };
 
   // Filter vehicles that are not in the queue and are 'fixed'
   const availableVehicles = vehicles.filter(
-    (v: any) => v.type === "fixed" && (!v.queuePosition || v.status !== "empty")
+    (v: any) =>
+      v.type === "fixed" && (!v.queuePosition || v.status !== "empty"),
   );
   const { data: tasks = [] } = useListTasks(
     {},
-    { query: { queryKey: getListTasksQueryKey() } }
+    { query: { queryKey: getListTasksQueryKey() } },
   );
-  const { data: trackerStatus, refetch: refetchStatus } = useGetFlightTrackerStatus({
-    query: { queryKey: getGetFlightTrackerStatusQueryKey(), refetchInterval: 30000 },
-  });
+  const { data: trackerStatus, refetch: refetchStatus } =
+    useGetFlightTrackerStatus({
+      query: {
+        queryKey: getGetFlightTrackerStatusQueryKey(),
+        refetchInterval: 30000,
+      },
+    });
 
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
@@ -209,42 +246,75 @@ export function Board() {
     return dateStr === selectedDate;
   });
 
-  const sortTasksByTime = (a: Task, b: Task) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
+  const sortTasksByTime = (a: Task, b: Task) =>
+    new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
 
-  const activeTasks = dayTasks.filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.type !== "technical");
-  const technicalTasks = dayTasks.filter((t) => t.type === "technical" && t.status !== "completed" && t.status !== "cancelled").sort(sortTasksByTime);
-  const isGelirTask = (t: Task) => t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
-  const isGiderTask = (t: Task) => t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gider" || (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
+  const activeTasks = dayTasks.filter(
+    (t) =>
+      t.status !== "completed" &&
+      t.status !== "cancelled" &&
+      t.type !== "technical",
+  );
+  const technicalTasks = dayTasks
+    .filter(
+      (t) =>
+        t.type === "technical" &&
+        t.status !== "completed" &&
+        t.status !== "cancelled",
+    )
+    .sort(sortTasksByTime);
+  const isGelirTask = (t: Task) =>
+    t.type === "airport_run" || t.dropoffLocation === "Ekstra Gelir";
+  const isGiderTask = (t: Task) =>
+    t.type === "hotel_pickup" ||
+    t.dropoffLocation === "Ekstra Gider" ||
+    (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
 
-  const gelirTasks     = activeTasks.filter(isGelirTask).sort(sortTasksByTime);
-  const giderTasks     = activeTasks.filter(isGiderTask).sort(sortTasksByTime);
-  const completedTasks = dayTasks.filter((t) => t.status === "completed").sort(sortTasksByTime);
-  const cancelledTasks = dayTasks.filter((t) => t.status === "cancelled").sort(sortTasksByTime);
+  const gelirTasks = activeTasks.filter(isGelirTask).sort(sortTasksByTime);
+  const giderTasks = activeTasks.filter(isGiderTask).sort(sortTasksByTime);
+  const completedTasks = dayTasks
+    .filter((t) => t.status === "completed")
+    .sort(sortTasksByTime);
+  const cancelledTasks = dayTasks
+    .filter((t) => t.status === "cancelled")
+    .sort(sortTasksByTime);
 
   const handleReactivate = (task: Task) => {
     updateTaskMutation.mutate(
       { id: task.id, data: { status: "draft", vehicleId: null } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      },
     );
   };
 
   const handleDeletePermanently = (task: Task) => {
-    if (confirm("Bu iptal edilmiş görevi kalıcı olarak silmek istediğinize emin misiniz?")) {
+    if (
+      confirm(
+        "Bu iptal edilmiş görevi kalıcı olarak silmek istediğinize emin misiniz?",
+      )
+    ) {
       deleteTaskMutation.mutate(
         { id: task.id },
-        { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+        {
+          onSuccess: () =>
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+        },
       );
     }
   };
 
-  const notifyMutation      = useBatchNotifyTasks();
-  const updateTaskMutation  = useUpdateTask();
-  const deleteTaskMutation  = useDeleteTask();
+  const notifyMutation = useBatchNotifyTasks();
+  const updateTaskMutation = useUpdateTask();
+  const deleteTaskMutation = useDeleteTask();
   const checkDelaysMutation = useCheckFlightDelays();
   const [selectedTasks, setSelectedTasks] = useState<number[]>([]);
   const [lastUpdateCount, setLastUpdateCount] = useState<number | null>(null);
-  
-  const [notifyLinks, setNotifyLinks] = useState<{ driverName: string; phone: string; url: string; }[]>([]);
+
+  const [notifyLinks, setNotifyLinks] = useState<
+    { driverName: string; phone: string; url: string }[]
+  >([]);
   const [isNotifyDialogOpen, setIsNotifyDialogOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [assignVehicleId, setAssignVehicleId] = useState<string>("");
@@ -253,12 +323,27 @@ export function Board() {
   // Edit dialog state
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editForm, setEditForm] = useState<{
-    scheduledTime: string; pickupLocation: string; dropoffLocation: string;
-    flightCode: string; notes: string; fee: string; km: string;
-  }>({ scheduledTime: "", pickupLocation: "", dropoffLocation: "", flightCode: "", notes: "", fee: "", km: "" });
+    scheduledTime: string;
+    pickupLocation: string;
+    dropoffLocation: string;
+    flightCode: string;
+    notes: string;
+    fee: string;
+    km: string;
+  }>({
+    scheduledTime: "",
+    pickupLocation: "",
+    dropoffLocation: "",
+    flightCode: "",
+    notes: "",
+    fee: "",
+    km: "",
+  });
 
   // Track tasks updated after notification (to show "Güncelleme Bildir")
-  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<number>>(new Set());
+  const [pendingUpdateIds, setPendingUpdateIds] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Helper: generate WA URL for a phone + message
   const makeWaUrl = (phone: string, message: string) => {
@@ -270,39 +355,56 @@ export function Board() {
 
   const handleSelectTask = (id: number) =>
     setSelectedTasks((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
   const handleAssignVehicle = async () => {
-    if ((!assignVehicleId && !customPlateText.trim()) || !selectedTasks.length) return;
+    if ((!assignVehicleId && !customPlateText.trim()) || !selectedTasks.length)
+      return;
     const vId = assignVehicleId ? Number(assignVehicleId) : null;
-    const selectedVehicle = vId ? vehicles.find((v: any) => v.id === vId) : null;
-    
+    const selectedVehicle = vId
+      ? vehicles.find((v: any) => v.id === vId)
+      : null;
+
     const promises = selectedTasks.map((taskId) => {
       const task = tasks.find((t: any) => t.id === taskId);
       if (!task) return Promise.resolve();
 
       let newNotes = task.notes ?? "";
-      const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
+      const cleanNotes = newNotes.includes(" | Plaka:")
+        ? newNotes.split(" | Plaka:")[0]
+        : newNotes.includes(" | İPTAL")
+          ? newNotes.split(" | İPTAL")[0]
+          : newNotes === "İPTAL"
+            ? ""
+            : newNotes;
 
       let finalNotes = cleanNotes;
       if (selectedVehicle) {
-        finalNotes = cleanNotes ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}` : `Plaka: ${selectedVehicle.plate}`;
+        finalNotes = cleanNotes
+          ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
+          : `Plaka: ${selectedVehicle.plate}`;
       } else if (customPlateText.trim()) {
-        finalNotes = cleanNotes ? `${cleanNotes} | Plaka: ${customPlateText.trim()}` : `Plaka: ${customPlateText.trim()}`;
+        finalNotes = cleanNotes
+          ? `${cleanNotes} | Plaka: ${customPlateText.trim()}`
+          : `Plaka: ${customPlateText.trim()}`;
       }
 
       return new Promise<void>((resolve, reject) => {
         updateTaskMutation.mutate(
-          { 
-            id: taskId, 
-            data: { 
-              vehicleId: vId, 
-              status: vId ? "draft" : (customPlateText.trim() ? "assigned" : "draft"),
-              notes: finalNotes || null
-            } 
+          {
+            id: taskId,
+            data: {
+              vehicleId: vId,
+              status: vId
+                ? "draft"
+                : customPlateText.trim()
+                  ? "assigned"
+                  : "draft",
+              notes: finalNotes || null,
+            },
           },
-          { onSuccess: () => resolve(), onError: (err) => reject(err) }
+          { onSuccess: () => resolve(), onError: (err) => reject(err) },
         );
       });
     });
@@ -328,14 +430,20 @@ export function Board() {
   const handleDropAssign = (taskId: number, vehicleId: number) => {
     updateTaskMutation.mutate(
       { id: taskId, data: { vehicleId, status: "draft" } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      },
     );
   };
 
   const handleComplete = (task: Task) => {
     updateTaskMutation.mutate(
       { id: task.id, data: { status: "completed" } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      },
     );
   };
 
@@ -348,13 +456,25 @@ export function Board() {
     if (task.vehicleId) {
       const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
       if (vehicle) {
-        const time = format(new Date(task.scheduledTime), "HH:mm");
-        const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
-        const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+        const time = utcTime(task.scheduledTime);
+        const direction =
+          task.type === "airport_run"
+            ? "GELİR"
+            : task.type === "hotel_pickup"
+              ? "GİDER"
+              : "EKSTRA";
+        const location =
+          task.type === "airport_run"
+            ? task.dropoffLocation
+            : task.pickupLocation;
         const crew = task.notes
-          ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+          ? task.notes.includes(" | Plaka:")
+            ? task.notes.split(" | Plaka:")[0]
+            : task.notes
           : "";
-        const line = [task.flightCode, time, location, crew, direction].filter(Boolean).join("   ");
+        const line = [task.flightCode, time, location, crew, direction]
+          .filter(Boolean)
+          .join("   ");
         const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görev İPTAL EDİLMİŞTİR:\n${line}\n\nİyi çalışmalar.`;
         window.open(makeWaUrl(vehicle.phone, message), "_blank");
       }
@@ -362,14 +482,17 @@ export function Board() {
     // Soft-cancel task by setting status to cancelled and clearing vehicleId
     updateTaskMutation.mutate(
       { id: task.id, data: { status: "cancelled", vehicleId: null } },
-      { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }) }
+      {
+        onSuccess: () =>
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      },
     );
   };
 
   const handleOpenEdit = (task: Task) => {
     setEditingTask(task);
     const dt = new Date(task.scheduledTime);
-    const local = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}T${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+    const local = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}T${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
     setEditForm({
       scheduledTime: local,
       pickupLocation: task.pickupLocation ?? "",
@@ -388,7 +511,9 @@ export function Board() {
       {
         id: editingTask.id,
         data: {
-          scheduledTime: editForm.scheduledTime ? new Date(editForm.scheduledTime).toISOString() : undefined,
+          scheduledTime: editForm.scheduledTime
+            ? new Date(editForm.scheduledTime).toISOString()
+            : undefined,
           pickupLocation: editForm.pickupLocation || undefined,
           dropoffLocation: editForm.dropoffLocation || undefined,
           flightCode: editForm.flightCode || undefined,
@@ -404,20 +529,30 @@ export function Board() {
           }
           setEditingTask(null);
         },
-      }
+      },
     );
   };
 
   const handleUpdateNotify = (task: Task) => {
     const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
     if (!vehicle) return;
-    const time = format(new Date(task.scheduledTime), "HH:mm");
-    const direction = task.type === "airport_run" ? "GELİR" : task.type === "hotel_pickup" ? "GİDER" : "EKSTRA";
-    const location = task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
+    const time = utcTime(task.scheduledTime);
+    const direction =
+      task.type === "airport_run"
+        ? "GELİR"
+        : task.type === "hotel_pickup"
+          ? "GİDER"
+          : "EKSTRA";
+    const location =
+      task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;
     const crew = task.notes
-      ? task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes
+      ? task.notes.includes(" | Plaka:")
+        ? task.notes.split(" | Plaka:")[0]
+        : task.notes
       : "";
-    const line = [task.flightCode, time, location, crew, direction].filter(Boolean).join("   ");
+    const line = [task.flightCode, time, location, crew, direction]
+      .filter(Boolean)
+      .join("   ");
     const message = `Merhaba ${vehicle.driverName}\n\nAşağıdaki görevde GÜNCELLEME yapılmıştır:\n${line}\n\nLütfen kontrol ediniz. İyi çalışmalar.`;
     window.open(makeWaUrl(vehicle.phone, message), "_blank");
     setPendingUpdateIds((prev) => {
@@ -437,7 +572,7 @@ export function Board() {
             window.open(response.links[0].url, "_blank");
           }
         },
-      }
+      },
     );
   };
 
@@ -454,44 +589,40 @@ export function Board() {
             setIsNotifyDialogOpen(true);
           }
         },
-      }
+      },
     );
   };
 
   const handleFlightCheck = () => {
-    checkDelaysMutation.mutate(
-      undefined,
-      {
-        onSuccess: (result) => {
-          setLastUpdateCount(result.updatedTasks);
-          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
-          refetchStatus();
-        },
-      }
-    );
+    checkDelaysMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        setLastUpdateCount(result.updatedTasks);
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        refetchStatus();
+      },
+    });
   };
 
   useEffect(() => {
     const h = setInterval(
       () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
-      60_000
+      60_000,
     );
     return () => clearInterval(h);
   }, [queryClient]);
 
   const tabCount = (key: TabKey) => {
-    if (key === "queue")       return queue.length;
-    if (key === "gelir")       return gelirTasks.length;
-    if (key === "gider")       return giderTasks.length;
-    if (key === "technical")   return technicalTasks.length;
-    if (key === "completed")   return completedTasks.length;
-    if (key === "cancelled")   return cancelledTasks.length;
+    if (key === "queue") return queue.length;
+    if (key === "gelir") return gelirTasks.length;
+    if (key === "gider") return giderTasks.length;
+    if (key === "technical") return technicalTasks.length;
+    if (key === "completed") return completedTasks.length;
+    if (key === "cancelled") return cancelledTasks.length;
     return 0;
   };
 
   return (
     <div className="flex flex-col h-full gap-0">
-
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
@@ -499,10 +630,14 @@ export function Board() {
             <h1 className="text-xl md:text-2xl font-bold tracking-tight leading-tight">
               Sevkiyat Paneli
             </h1>
-            <p className="text-muted-foreground text-xs md:text-sm">Gerçek zamanlı terminal görünümü</p>
+            <p className="text-muted-foreground text-xs md:text-sm">
+              Gerçek zamanlı terminal görünümü
+            </p>
           </div>
           <div className="flex items-center gap-2 ml-0 md:ml-4 bg-muted/30 p-1 rounded-md border border-slate-100 dark:border-slate-800">
-            <span className="text-xs font-semibold text-muted-foreground pl-1">Tarih:</span>
+            <span className="text-xs font-semibold text-muted-foreground pl-1">
+              Tarih:
+            </span>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -519,15 +654,20 @@ export function Board() {
                   })()}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 border shadow-md rounded-md bg-popover z-50" align="start">
+              <PopoverContent
+                className="w-auto p-0 border shadow-md rounded-md bg-popover z-50"
+                align="start"
+              >
                 <Calendar
                   mode="single"
                   selected={selectedDate ? new Date(selectedDate) : undefined}
                   onSelect={handleDateSelect}
                   modifiers={calendarModifiers}
                   modifiersClassNames={{
-                    completed: "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
-                    uncompleted: "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
+                    completed:
+                      "!bg-emerald-500 !text-white hover:!bg-emerald-600 dark:!bg-emerald-600 dark:hover:!bg-emerald-700 font-semibold rounded-md",
+                    uncompleted:
+                      "!bg-amber-400 !text-amber-950 hover:!bg-amber-500 dark:!bg-amber-500 dark:hover:!bg-amber-600 font-semibold rounded-md",
                   }}
                 />
               </PopoverContent>
@@ -543,7 +683,9 @@ export function Board() {
           <div className="hidden md:flex flex-col leading-tight min-w-0">
             <div className="flex items-center gap-1.5">
               {trackerStatus?.simulationMode ? (
-                <span className="text-amber-600 font-medium text-xs">Simülasyon Modu</span>
+                <span className="text-amber-600 font-medium text-xs">
+                  Simülasyon Modu
+                </span>
               ) : (
                 <span className="text-emerald-600 font-medium text-xs flex items-center gap-1">
                   <Wifi className="w-3 h-3" /> AirLabs API
@@ -598,7 +740,9 @@ export function Board() {
           if (key === "gelir") targetTasks = gelirTasks;
           else if (key === "gider") targetTasks = giderTasks;
           else if (key === "technical") targetTasks = technicalTasks;
-          return targetTasks.some((t) => t.vehicleId != null && t.status === "draft");
+          return targetTasks.some(
+            (t) => t.vehicleId != null && t.status === "draft",
+          );
         };
 
         return (
@@ -612,9 +756,10 @@ export function Board() {
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0
-                    ${active
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
+                    ${
+                      active
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}
                 >
                   {tab.short}
@@ -639,7 +784,6 @@ export function Board() {
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-hidden flex gap-4 min-h-0">
-
         {/* ── Desktop: queue sidebar ────────────────────────────────── */}
         <div className="hidden md:flex w-60 shrink-0 flex-col gap-2 h-full">
           <div className="flex items-center justify-between mb-1">
@@ -656,7 +800,10 @@ export function Board() {
               >
                 <Plus className="w-4 h-4" />
               </Button>
-              <Badge variant="secondary" className="font-mono text-[11px] px-1.5">
+              <Badge
+                variant="secondary"
+                className="font-mono text-[11px] px-1.5"
+              >
                 {queue.length}
               </Badge>
             </div>
@@ -669,7 +816,11 @@ export function Board() {
               onDragEnd={handleDragEnd}
               onRemove={handleRemoveFromQueue}
             />
-            {queue.length === 0 && <div className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-lg">Kuyruk boş</div>}
+            {queue.length === 0 && (
+              <div className="text-xs text-muted-foreground text-center py-4 border border-dashed rounded-lg">
+                Kuyruk boş
+              </div>
+            )}
           </div>
         </div>
 
@@ -744,7 +895,9 @@ export function Board() {
           {activeTab === "queue" && (
             <div className="flex-1 overflow-y-auto space-y-2 pb-24">
               <div className="flex justify-between items-center mb-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kuyruk Yönetimi</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Kuyruk Yönetimi
+                </span>
                 <Button size="sm" onClick={() => setIsAddOpen(true)}>
                   <Plus className="w-3.5 h-3.5 mr-1" /> Araç Ekle
                 </Button>
@@ -887,7 +1040,8 @@ export function Board() {
           </DialogHeader>
           <div className="flex flex-col gap-3 py-4">
             <p className="text-sm text-muted-foreground">
-              Şoförlere otomatik atanmış mesajları göndermek için aşağıdaki bağlantılara tıklayın:
+              Şoförlere otomatik atanmış mesajları göndermek için aşağıdaki
+              bağlantılara tıklayın:
             </p>
             {notifyLinks.map((link, idx) => (
               <Button
@@ -898,7 +1052,9 @@ export function Board() {
               >
                 <div className="flex flex-col items-start gap-1">
                   <span className="font-semibold">{link.driverName}</span>
-                  <span className="text-xs text-muted-foreground">{link.phone}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {link.phone}
+                  </span>
                 </div>
                 <ExternalLink className="w-4 h-4 text-emerald-600" />
               </Button>
@@ -916,11 +1072,14 @@ export function Board() {
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Seçilen <strong>{selectedTasks.length}</strong> işe atanacak şoför ve aracı seçin veya özel plaka girin:
+              Seçilen <strong>{selectedTasks.length}</strong> işe atanacak şoför
+              ve aracı seçin veya özel plaka girin:
             </p>
-            
+
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şoför Seçin</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Şoför Seçin
+              </label>
               <select
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 value={assignVehicleId}
@@ -932,14 +1091,17 @@ export function Board() {
                 <option value="">Şoför / Araç Seçin...</option>
                 {vehicles.map((v: any) => (
                   <option key={v.id} value={v.id}>
-                    {v.plate} — {v.driverName} ({v.name}) {v.type === "outsource" ? "[ESNAF]" : ""}
+                    {v.plate} — {v.driverName} ({v.name}){" "}
+                    {v.type === "outsource" ? "[ESNAF]" : ""}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Veya Özel Plaka Girin (Çoklu da olabilir)</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Veya Özel Plaka Girin (Çoklu da olabilir)
+              </label>
               <Input
                 type="text"
                 placeholder="Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456"
@@ -952,8 +1114,23 @@ export function Board() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setAssignVehicleId(""); setCustomPlateText(""); }}>İptal</Button>
-              <Button onClick={handleAssignVehicle} disabled={(!assignVehicleId && !customPlateText.trim()) || updateTaskMutation.isPending}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsAssignOpen(false);
+                  setAssignVehicleId("");
+                  setCustomPlateText("");
+                }}
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={handleAssignVehicle}
+                disabled={
+                  (!assignVehicleId && !customPlateText.trim()) ||
+                  updateTaskMutation.isPending
+                }
+              >
                 {updateTaskMutation.isPending ? "Atanıyor..." : "Araç Ata"}
               </Button>
             </div>
@@ -962,7 +1139,12 @@ export function Board() {
       </Dialog>
 
       {/* Edit Task Dialog */}
-      <Dialog open={!!editingTask} onOpenChange={(open) => { if (!open) setEditingTask(null); }}>
+      <Dialog
+        open={!!editingTask}
+        onOpenChange={(open) => {
+          if (!open) setEditingTask(null);
+        }}
+      >
         <DialogContent className="w-full max-w-full fixed bottom-0 top-auto left-0 right-0 translate-x-0 translate-y-0 rounded-t-2xl rounded-b-none p-6 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-lg bg-card max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
           <div className="md:hidden w-12 h-1.5 bg-muted rounded-full mx-auto mb-4 shrink-0" />
           <DialogHeader>
@@ -972,82 +1154,125 @@ export function Board() {
             <div className="flex flex-col gap-3 py-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saat</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Saat
+                  </label>
                   <input
                     type="datetime-local"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     value={editForm.scheduledTime}
-                    onChange={(e) => setEditForm(f => ({ ...f, scheduledTime: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        scheduledTime: e.target.value,
+                      }))
+                    }
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">KM</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    KM
+                  </label>
                   <input
                     type="number"
                     min={0}
                     placeholder="örn. 45"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     value={editForm.km}
-                    onChange={(e) => setEditForm(f => ({ ...f, km: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, km: e.target.value }))
+                    }
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nereden</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Nereden
+                </label>
                 <input
                   type="text"
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={editForm.pickupLocation}
-                  onChange={(e) => setEditForm(f => ({ ...f, pickupLocation: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      pickupLocation: e.target.value,
+                    }))
+                  }
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nereye</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Nereye
+                </label>
                 <input
                   type="text"
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   value={editForm.dropoffLocation}
-                  onChange={(e) => setEditForm(f => ({ ...f, dropoffLocation: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      dropoffLocation: e.target.value,
+                    }))
+                  }
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Uçuş Kodu</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Uçuş Kodu
+                  </label>
                   <input
                     type="text"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     value={editForm.flightCode}
-                    onChange={(e) => setEditForm(f => ({ ...f, flightCode: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, flightCode: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ücret (₺)</label>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Ücret (₺)
+                  </label>
                   <input
                     type="number"
                     className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     value={editForm.fee}
-                    onChange={(e) => setEditForm(f => ({ ...f, fee: e.target.value }))}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, fee: e.target.value }))
+                    }
                   />
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notlar</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Notlar
+                </label>
                 <textarea
                   rows={2}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                   value={editForm.notes}
-                  onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, notes: e.target.value }))
+                  }
                 />
               </div>
               {editingTask.status === "assigned" && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2.5 py-2">
-                  ⚠️ Bu iş zaten şoföre bildirildi. Kaydettikten sonra "Güncelleme Bildir" butonu görünecektir.
+                  ⚠️ Bu iş zaten şoföre bildirildi. Kaydettikten sonra
+                  "Güncelleme Bildir" butonu görünecektir.
                 </p>
               )}
               <div className="flex justify-end gap-2 pt-1">
-                <Button variant="outline" onClick={() => setEditingTask(null)}>İptal</Button>
-                <Button onClick={handleSaveEdit} disabled={updateTaskMutation.isPending}>
+                <Button variant="outline" onClick={() => setEditingTask(null)}>
+                  İptal
+                </Button>
+                <Button
+                  onClick={handleSaveEdit}
+                  disabled={updateTaskMutation.isPending}
+                >
                   {updateTaskMutation.isPending ? "Kaydediliyor..." : "Kaydet"}
                 </Button>
               </div>
@@ -1067,9 +1292,11 @@ export function Board() {
             <p className="text-sm text-muted-foreground">
               Kuyruğa manuel olarak eklemek istediğiniz şoförü ve aracını seçin:
             </p>
-            
+
             <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şoför Seçin</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Şoför Seçin
+              </label>
               <select
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 value={selectedVehicleId}
@@ -1085,8 +1312,12 @@ export function Board() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setIsAddOpen(false)}>İptal</Button>
-              <Button onClick={handleAddToQueue} disabled={!selectedVehicleId}>Kuyruğa Ekle</Button>
+              <Button variant="outline" onClick={() => setIsAddOpen(false)}>
+                İptal
+              </Button>
+              <Button onClick={handleAddToQueue} disabled={!selectedVehicleId}>
+                Kuyruğa Ekle
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -1119,7 +1350,10 @@ function QueueList({
           onDragStart={(e) => {
             onDragStart(idx);
             e.dataTransfer.setData("text/vehicle-id", String(v.id));
-            e.dataTransfer.setData("text/vehicle-name", `${v.plate} — ${v.driverName}`);
+            e.dataTransfer.setData(
+              "text/vehicle-name",
+              `${v.plate} — ${v.driverName}`,
+            );
             e.dataTransfer.effectAllowed = "move";
           }}
           onDragOver={(e) => onDragOver(e, idx)}
@@ -1134,9 +1368,11 @@ function QueueList({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 min-w-0">
               <GripVertical className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0 cursor-grab" />
-              <span className="font-mono text-xs tracking-wide truncate font-bold text-foreground">{v.plate}</span>
+              <span className="font-mono text-xs tracking-wide truncate font-bold text-foreground">
+                {v.plate}
+              </span>
             </div>
-            
+
             <div className="flex items-center gap-1 shrink-0">
               <Badge
                 variant="secondary"
@@ -1144,7 +1380,7 @@ function QueueList({
               >
                 #{idx + 1}
               </Badge>
-              
+
               {/* Manual Remove from Queue */}
               <button
                 onClick={(e) => {
@@ -1158,7 +1394,7 @@ function QueueList({
               </button>
             </div>
           </div>
-          
+
           <div className="text-xs text-muted-foreground pl-5 truncate font-medium">
             {v.name} &bull; {v.driverName}
           </div>
@@ -1225,15 +1461,23 @@ function MobileTaskList({
           selected={selectedIds.includes(t.id)}
           onSelect={() => onSelect?.(t.id)}
           selectable={selectable}
-          onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
+          onNotifySingle={
+            onNotifySingle ? () => onNotifySingle(t.id) : undefined
+          }
           onComplete={onComplete ? () => onComplete(t) : undefined}
           onCancel={onCancel ? () => onCancel(t) : undefined}
           onEdit={onEdit ? () => onEdit(t) : undefined}
           onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
-          onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
-          onAssignSingle={onAssignSingle ? () => onAssignSingle(t.id) : undefined}
+          onDropAssign={
+            onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined
+          }
+          onAssignSingle={
+            onAssignSingle ? () => onAssignSingle(t.id) : undefined
+          }
           onReactivate={onReactivate ? () => onReactivate(t) : undefined}
-          onDeletePermanently={onDeletePermanently ? () => onDeletePermanently(t) : undefined}
+          onDeletePermanently={
+            onDeletePermanently ? () => onDeletePermanently(t) : undefined
+          }
           hasPendingUpdate={pendingUpdateIds.has(t.id)}
           showCompletedColor={showCompletedColors}
           showCancelledColor={showCancelledColors}
@@ -1288,7 +1532,10 @@ function TaskColumn({
         <h2 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
           {title}
         </h2>
-        <Badge variant="secondary" className="rounded-full px-2 font-mono text-[11px]">
+        <Badge
+          variant="secondary"
+          className="rounded-full px-2 font-mono text-[11px]"
+        >
           {tasks.length}
         </Badge>
       </div>
@@ -1300,15 +1547,25 @@ function TaskColumn({
             selected={selectedIds.includes(t.id)}
             onSelect={() => onSelect?.(t.id)}
             selectable={selectable}
-            onNotifySingle={onNotifySingle ? () => onNotifySingle(t.id) : undefined}
+            onNotifySingle={
+              onNotifySingle ? () => onNotifySingle(t.id) : undefined
+            }
             onComplete={onComplete ? () => onComplete(t) : undefined}
             onCancel={onCancel ? () => onCancel(t) : undefined}
             onEdit={onEdit ? () => onEdit(t) : undefined}
-            onUpdateNotify={onUpdateNotify ? () => onUpdateNotify(t) : undefined}
-            onDropAssign={onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined}
-            onAssignSingle={onAssignSingle ? () => onAssignSingle(t.id) : undefined}
+            onUpdateNotify={
+              onUpdateNotify ? () => onUpdateNotify(t) : undefined
+            }
+            onDropAssign={
+              onDropAssign ? (vId) => onDropAssign(t.id, vId) : undefined
+            }
+            onAssignSingle={
+              onAssignSingle ? () => onAssignSingle(t.id) : undefined
+            }
             onReactivate={onReactivate ? () => onReactivate(t) : undefined}
-            onDeletePermanently={onDeletePermanently ? () => onDeletePermanently(t) : undefined}
+            onDeletePermanently={
+              onDeletePermanently ? () => onDeletePermanently(t) : undefined
+            }
             hasPendingUpdate={pendingUpdateIds.has(t.id)}
             showCompletedColor={showCompletedColors}
             showCancelledColor={showCancelledColors}
@@ -1359,9 +1616,10 @@ function TaskCard({
   fullWidth?: boolean;
 }) {
   const scheduledDate = new Date(task.scheduledTime);
-  const createdDate   = new Date(task.createdAt);
-  const diffMs        = scheduledDate.getTime() - createdDate.getTime();
-  const isDelayed     = diffMs > 2 * 60 * 1000 && !!task.flightCode && task.type !== "hotel_pickup";
+  const createdDate = new Date(task.createdAt);
+  const diffMs = scheduledDate.getTime() - createdDate.getTime();
+  const isDelayed =
+    diffMs > 2 * 60 * 1000 && !!task.flightCode && task.type !== "hotel_pickup";
 
   const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
   const isNotified = task.status === "assigned";
@@ -1375,7 +1633,8 @@ function TaskCard({
   const displayName = task.vehicleName || getPlateFromNotes(task.notes);
 
   // Colour coding for completed column
-  const isGelirType = task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
+  const isGelirType =
+    task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
 
   // Drag-over state for vehicle assignment
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1390,13 +1649,17 @@ function TaskCard({
         : "bg-blue-50/60 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900/50 text-blue-800 dark:text-blue-400"
       : "bg-card";
   } else if (task.status === "cancelled") {
-    cardBg = "bg-rose-50/40 border-rose-200 opacity-75 dark:bg-rose-950/10 dark:border-rose-900/30 text-rose-800 dark:text-rose-400";
+    cardBg =
+      "bg-rose-50/40 border-rose-200 opacity-75 dark:bg-rose-950/10 dark:border-rose-900/30 text-rose-800 dark:text-rose-400";
   } else if (task.type === "technical") {
-    cardBg = "bg-amber-50/50 border-amber-300 dark:bg-amber-950/10 dark:border-amber-900/30 text-amber-900 dark:text-amber-400";
+    cardBg =
+      "bg-amber-50/50 border-amber-300 dark:bg-amber-950/10 dark:border-amber-900/30 text-amber-900 dark:text-amber-400";
   } else if (isAssignedButNotNotified) {
-    cardBg = "bg-amber-50/20 border-amber-300 border-dashed dark:bg-amber-950/10 dark:border-amber-900/40 text-amber-800 dark:text-amber-400";
+    cardBg =
+      "bg-amber-50/20 border-amber-300 border-dashed dark:bg-amber-950/10 dark:border-amber-900/40 text-amber-800 dark:text-amber-400";
   } else if (task.status === "draft") {
-    cardBg = "bg-muted/40 border-dashed dark:bg-slate-900/40 dark:border-slate-800/80";
+    cardBg =
+      "bg-muted/40 border-dashed dark:bg-slate-900/40 dark:border-slate-800/80";
   } else {
     cardBg = "bg-card";
   }
@@ -1412,7 +1675,11 @@ function TaskCard({
       `}
       onClick={selectable ? onSelect : undefined}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("text/vehicle-id") && onDropAssign && task.status !== "completed") {
+        if (
+          e.dataTransfer.types.includes("text/vehicle-id") &&
+          onDropAssign &&
+          task.status !== "completed"
+        ) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
           setIsDragOver(true);
@@ -1457,20 +1724,25 @@ function TaskCard({
             <Badge
               variant="outline"
               className={`text-[10px] uppercase font-semibold px-1.5 shrink-0 ${
-                isDelayed ? "border-amber-400 text-amber-600 bg-amber-50/60 dark:border-amber-800 dark:text-amber-400 dark:bg-amber-950/40" :
-                task.type === "technical" ? "border-yellow-400 text-yellow-600 bg-yellow-50/60 dark:border-yellow-800 dark:text-yellow-400 dark:bg-yellow-950/40" :
-                showCompletedColor && isGelirType ? "border-emerald-300 text-emerald-700 bg-emerald-50/60 dark:border-emerald-800 dark:text-emerald-400 dark:bg-emerald-950/40" :
-                showCompletedColor && !isGelirType ? "border-blue-300 text-blue-700 bg-blue-50/60 dark:border-blue-800 dark:text-blue-400 dark:bg-blue-950/40" : ""
+                isDelayed
+                  ? "border-amber-400 text-amber-600 bg-amber-50/60 dark:border-amber-800 dark:text-amber-400 dark:bg-amber-950/40"
+                  : task.type === "technical"
+                    ? "border-yellow-400 text-yellow-600 bg-yellow-50/60 dark:border-yellow-800 dark:text-yellow-400 dark:bg-yellow-950/40"
+                    : showCompletedColor && isGelirType
+                      ? "border-emerald-300 text-emerald-700 bg-emerald-50/60 dark:border-emerald-800 dark:text-emerald-400 dark:bg-emerald-950/40"
+                      : showCompletedColor && !isGelirType
+                        ? "border-blue-300 text-blue-700 bg-blue-50/60 dark:border-blue-800 dark:text-blue-400 dark:bg-blue-950/40"
+                        : ""
               }`}
             >
               {task.flightCode ||
                 (task.type === "hotel_pickup"
                   ? "Otel"
                   : task.type === "airport_run"
-                  ? "Havalimanı"
-                  : task.type === "technical"
-                  ? "Teknik"
-                  : "Ekstra")}
+                    ? "Havalimanı"
+                    : task.type === "technical"
+                      ? "Teknik"
+                      : "Ekstra")}
             </Badge>
 
             {/* ── Action menu ── */}
@@ -1487,7 +1759,10 @@ function TaskCard({
                 <DropdownMenuContent align="end" className="w-44">
                   {onEdit && (
                     <DropdownMenuItem
-                      onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit();
+                      }}
                       className="gap-2"
                     >
                       <Pencil className="w-3.5 h-3.5" /> Düzenle
@@ -1497,15 +1772,22 @@ function TaskCard({
                     <>
                       {onReactivate && (
                         <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); onReactivate(); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReactivate();
+                          }}
                           className="gap-2 text-blue-700 focus:text-blue-700"
                         >
-                          <RefreshCw className="w-3.5 h-3.5" /> Yeniden Aktifleştir
+                          <RefreshCw className="w-3.5 h-3.5" /> Yeniden
+                          Aktifleştir
                         </DropdownMenuItem>
                       )}
                       {onDeletePermanently && (
                         <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); onDeletePermanently(); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeletePermanently();
+                          }}
                           className="gap-2 text-red-600 focus:text-red-600 font-semibold"
                         >
                           <XCircle className="w-3.5 h-3.5" /> Kalıcı Olarak Sil
@@ -1516,16 +1798,24 @@ function TaskCard({
                     <>
                       {onComplete && task.status !== "completed" && (
                         <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); onComplete(); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onComplete();
+                          }}
                           className="gap-2 text-emerald-700 focus:text-emerald-700"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" /> Tamamlandı
                         </DropdownMenuItem>
                       )}
-                      {(onEdit || onComplete) && onCancel && <DropdownMenuSeparator />}
+                      {(onEdit || onComplete) && onCancel && (
+                        <DropdownMenuSeparator />
+                      )}
                       {onCancel && (
                         <DropdownMenuItem
-                          onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCancel();
+                          }}
                           className="gap-2 text-red-600 focus:text-red-600"
                         >
                           <XCircle className="w-3.5 h-3.5" /> İptal Et
@@ -1542,21 +1832,34 @@ function TaskCard({
         {/* Route */}
         {task.type === "technical" ? (
           <div className="text-xs font-semibold mb-2.5 bg-yellow-50/50 dark:bg-yellow-950/20 border border-dashed border-yellow-300 rounded px-2.5 py-2 text-foreground/90">
-            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">Teknik İş Detayı</div>
-            <div className="line-clamp-2 leading-relaxed" title={task.pickupLocation}>
+            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">
+              Teknik İş Detayı
+            </div>
+            <div
+              className="line-clamp-2 leading-relaxed"
+              title={task.pickupLocation}
+            >
               {task.pickupLocation}
             </div>
           </div>
         ) : task.type === "extra" ? (
           <div className="text-xs font-semibold mb-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-dashed border-amber-300 rounded px-2.5 py-2 text-foreground/90">
-            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">Ekstra İş Detayı</div>
-            <div className="line-clamp-2 leading-relaxed" title={task.pickupLocation}>
+            <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mb-1">
+              Ekstra İş Detayı
+            </div>
+            <div
+              className="line-clamp-2 leading-relaxed"
+              title={task.pickupLocation}
+            >
               {task.pickupLocation}
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-1.5 text-xs font-medium mb-2.5 bg-muted/50 px-2 py-1.5 rounded border border-border/50">
-            <span className="truncate flex-1 text-foreground" title={task.pickupLocation}>
+            <span
+              className="truncate flex-1 text-foreground"
+              title={task.pickupLocation}
+            >
               {task.pickupLocation}
             </span>
             <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -1574,8 +1877,14 @@ function TaskCard({
           <div className="flex items-center gap-1 text-muted-foreground">
             <Users className="w-3.5 h-3.5" />
             <span>
-              {task.notes && (task.notes.includes("CPT") || task.notes.includes("KBN") || task.notes.toLowerCase().includes("cpt") || task.notes.toLowerCase().includes("kbn"))
-                ? (task.notes.includes(" | Plaka:") ? task.notes.split(" | Plaka:")[0] : task.notes)
+              {task.notes &&
+              (task.notes.includes("CPT") ||
+                task.notes.includes("KBN") ||
+                task.notes.toLowerCase().includes("cpt") ||
+                task.notes.toLowerCase().includes("kbn"))
+                ? task.notes.includes(" | Plaka:")
+                  ? task.notes.split(" | Plaka:")[0]
+                  : task.notes
                 : `${task.passengerCount} kişi`}
             </span>
           </div>
@@ -1598,12 +1907,14 @@ function TaskCard({
         )}
 
         {/* Notification Status & Single Action (active tasks only) */}
-        {task.status !== "completed" && (
-          task.vehicleId ? (
+        {task.status !== "completed" &&
+          (task.vehicleId ? (
             <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
               {isNotified ? (
                 <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
-                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">✓</span>
+                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">
+                    ✓
+                  </span>
                   Bildirildi
                 </span>
               ) : (
@@ -1612,7 +1923,7 @@ function TaskCard({
                   Bildirilmedi
                 </span>
               )}
-              
+
               <div className="flex items-center gap-1">
                 {/* Güncelleme Bildir — shows when task was edited after being notified */}
                 {hasPendingUpdate && onUpdateNotify && (
@@ -1647,7 +1958,9 @@ function TaskCard({
             </div>
           ) : (
             <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground italic select-none">Araç atanmadı</span>
+              <span className="text-muted-foreground italic select-none">
+                Araç atanmadı
+              </span>
               {onAssignSingle && (
                 <Button
                   size="sm"
@@ -1663,13 +1976,14 @@ function TaskCard({
                 </Button>
               )}
             </div>
-          )
-        )}
+          ))}
 
         {/* Quick Touch Actions for Mobile (visible only on mobile touch screens) */}
         {task.status !== "completed" && task.status !== "cancelled" && (
           <div className="flex md:hidden items-center justify-end gap-2 mt-2.5 pt-2 border-t border-dashed">
-            <span className="text-[10px] text-muted-foreground mr-auto font-bold uppercase tracking-wider">Hızlı İşlem:</span>
+            <span className="text-[10px] text-muted-foreground mr-auto font-bold uppercase tracking-wider">
+              Hızlı İşlem:
+            </span>
             {onComplete && (
               <Button
                 size="sm"
@@ -1705,13 +2019,13 @@ function TaskCard({
       {/* Status stripe */}
       <div
         className={`h-0.5 w-full absolute bottom-0 left-0
-          ${task.type === "technical"     ? "bg-yellow-400" : ""}
-          ${task.type !== "technical" && task.status === "draft"       ? "bg-slate-300"  : ""}
-          ${task.type !== "technical" && task.status === "assigned"    ? "bg-blue-400"   : ""}
-          ${task.type !== "technical" && task.status === "in_progress" ? "bg-amber-400"  : ""}
-          ${task.type !== "technical" && task.status === "completed" && isGelirType  ? "bg-emerald-500" : ""}
-          ${task.type !== "technical" && task.status === "completed" && !isGelirType ? "bg-blue-500"    : ""}
-          ${task.status === "cancelled"   ? "bg-rose-400"   : ""}
+          ${task.type === "technical" ? "bg-yellow-400" : ""}
+          ${task.type !== "technical" && task.status === "draft" ? "bg-slate-300" : ""}
+          ${task.type !== "technical" && task.status === "assigned" ? "bg-blue-400" : ""}
+          ${task.type !== "technical" && task.status === "in_progress" ? "bg-amber-400" : ""}
+          ${task.type !== "technical" && task.status === "completed" && isGelirType ? "bg-emerald-500" : ""}
+          ${task.type !== "technical" && task.status === "completed" && !isGelirType ? "bg-blue-500" : ""}
+          ${task.status === "cancelled" ? "bg-rose-400" : ""}
         `}
       />
     </div>
@@ -1726,4 +2040,3 @@ function EmptyState({ text }: { text: string }) {
     </div>
   );
 }
-

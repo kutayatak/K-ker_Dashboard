@@ -21,6 +21,10 @@ import {
   Calendar as CalendarIcon,
 } from "lucide-react";
 import { format } from "date-fns";
+
+// Read HH:mm directly from the UTC ISO string to avoid local-timezone offset.
+// date-fns format() uses local time; in Turkey (UTC+3) it would add 3 hours.
+const utcTime = (iso: string) => iso?.substring(11, 16) ?? "--:--";
 import { tr } from "date-fns/locale";
 import {
   Popover,
@@ -712,7 +716,7 @@ export function ExcelView() {
                         <td
                           className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${leftCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}
                         >
-                          {format(new Date(leftTask.scheduledTime), "HH:mm")}
+                          {utcTime(leftTask.scheduledTime)}
                         </td>
                         <td
                           className={`p-1.5 font-medium ${leftCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
@@ -833,7 +837,7 @@ export function ExcelView() {
                         <td
                           className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rightCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
                         >
-                          {format(new Date(rightTask.scheduledTime), "HH:mm")}
+                          {utcTime(rightTask.scheduledTime)}
                         </td>
                         <td
                           className={`p-1.5 font-medium ${rightCancelled ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
@@ -1019,7 +1023,7 @@ export function ExcelView() {
                         <td
                           className={`p-1.5 text-center font-bold bg-amber-50/10 ${leftExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
                         >
-                          {format(new Date(leftExtra.scheduledTime), "HH:mm")}
+                          {utcTime(leftExtra.scheduledTime)}
                         </td>
                         <td
                           className={`p-1 ${leftExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
@@ -1094,7 +1098,7 @@ export function ExcelView() {
                         <td
                           className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rightExtraCancelled ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
                         >
-                          {format(new Date(rightExtra.scheduledTime), "HH:mm")}
+                          {utcTime(rightExtra.scheduledTime)}
                         </td>
                         <td
                           className={`p-1 ${rightExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}
