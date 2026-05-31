@@ -612,11 +612,11 @@ export function Reports() {
             </Button>
           )}
 
-          <div className="flex bg-muted p-1 rounded-lg border border-slate-100 dark:border-slate-800 shrink-0">
+          <div className="flex bg-muted p-1 rounded-lg border border-slate-100 dark:border-slate-800 shrink-0 overflow-x-auto w-full sm:w-auto scrollbar-none">
             <Button
               variant={activeTab === "analytics" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs"
+              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
               onClick={() => setActiveTab("analytics")}
             >
               Analitik Görünüm
@@ -624,7 +624,7 @@ export function Reports() {
             <Button
               variant={activeTab === "accounting" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs"
+              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
               onClick={() => setActiveTab("accounting")}
             >
               Esnaf Sefer Listesi
@@ -632,7 +632,7 @@ export function Reports() {
             <Button
               variant={activeTab === "technical" ? "default" : "ghost"}
               size="sm"
-              className="h-7 px-3 text-xs"
+              className="h-7 px-3 text-xs flex-1 sm:flex-none shrink-0"
               onClick={() => setActiveTab("technical")}
             >
               Teknik İşler Raporu
@@ -1053,7 +1053,7 @@ export function Reports() {
           </div>
 
           {/* ── Esnaf Sefer Listesi Summary Cards ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none">
+          <div className="flex overflow-x-auto md:grid md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none pb-2.5 md:pb-0 scrollbar-none snap-x snap-mandatory">
             {outsourceVehicleSummaries.map((s) => (
               <Card
                 key={s.vehicleName}
@@ -1067,7 +1067,7 @@ export function Reports() {
                 }}
                 onTouchStart={() => handlePressStart(s.vehicleName)}
                 onTouchEnd={() => handlePressEnd(s.vehicleName)}
-                className={`relative border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer active:scale-95 touch-none ${
+                className={`relative w-[135px] shrink-0 snap-start md:w-auto border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer active:scale-95 touch-none ${
                   activeEsnafFilter === s.vehicleName
                     ? "ring-2 ring-primary bg-primary/5 border-primary/20"
                     : ""
@@ -1117,7 +1117,8 @@ export function Reports() {
 
           {/* ── Esnaf Sefer List Table ── */}
           <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-2">
-            <div className="overflow-auto flex-1 select-none">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-auto flex-1 select-none">
               <Table>
                 <TableHeader className="bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
                   <TableRow>
@@ -1191,6 +1192,48 @@ export function Reports() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Mobile Card List View */}
+            <div className="block md:hidden overflow-auto flex-1 select-none p-2 space-y-2">
+              {isLoading ? (
+                <div className="text-center py-8 text-muted-foreground text-xs font-semibold">
+                  Kayıtlar yükleniyor...
+                </div>
+              ) : tableRecords.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-xs font-semibold">
+                  Seçilen ayda tamamlanmış esnaf sefer kaydı bulunamadı.
+                </div>
+              ) : (
+                tableRecords.map((r) => {
+                  const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+                  const displayPlate = formatDisplayPlate(r.vehicleName);
+                  return (
+                    <div
+                      key={r.id}
+                      className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-card hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-all space-y-1.5"
+                    >
+                      <div className="flex justify-between items-center text-[10px] text-muted-foreground">
+                        <span className="font-mono bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded font-semibold">
+                          {format(new Date(r.date), "dd MMM yyyy HH:mm", { locale: tr })}
+                        </span>
+                        <span className="font-mono">#görev_{r.taskId}</span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <span className="font-extrabold text-sm text-foreground">{displayPlate}</span>
+                        <span className="text-xs text-muted-foreground font-semibold">{vInfo?.driverName || "Belirtilmedi"}</span>
+                      </div>
+                      
+                      {r.notes && (
+                        <div className="text-[11px] text-muted-foreground bg-slate-50 dark:bg-slate-900/50 p-2 rounded leading-relaxed border border-slate-100/50 dark:border-slate-800/50 italic">
+                          {r.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </Card>
         </>
       ) : (
@@ -1198,7 +1241,8 @@ export function Reports() {
 
           {/* ── Teknik İşler Raporu Tablosu ── */}
           <Card className="flex-1 overflow-hidden flex flex-col border-slate-200/80 shadow-sm mt-1">
-            <div className="overflow-auto flex-1 select-none">
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-auto flex-1 select-none">
               <Table>
                 <TableHeader className="bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
                   <TableRow>
@@ -1372,7 +1416,7 @@ export function Reports() {
                                 }}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/20 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors shrink-0"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <Trash2 className="w-3.5 h-3.5" />
                                 Sil
                               </button>
                             </div>
@@ -1383,6 +1427,122 @@ export function Reports() {
                   )}
                 </TableBody>
               </Table>
+            </div>
+
+            {/* Mobile Card List View */}
+            <div className="block md:hidden overflow-auto flex-1 select-none p-2 space-y-2">
+              {tasksPending ? (
+                <div className="text-center py-8 text-muted-foreground text-xs font-semibold">
+                  Görevler yükleniyor...
+                </div>
+              ) : filteredTechnicalTasks.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-xs font-semibold">
+                  Kriterlere uygun teknik iş kaydı bulunamadı.
+                </div>
+              ) : (
+                filteredTechnicalTasks.map((t) => {
+                  const costCode = getExpenseCode(t);
+                  const extraDest = t.dropoffLocation?.includes("Gelir")
+                    ? "Ekstra Gelir"
+                    : "Ekstra Gider";
+                  return (
+                    <div
+                      key={t.id}
+                      className="p-3.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-card hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-all space-y-2.5"
+                    >
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className="font-mono bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded font-semibold text-muted-foreground">
+                          {format(new Date(t.scheduledTime), "dd MMM yyyy", { locale: tr })} &bull; <strong className="text-primary">{utcTime(t.scheduledTime)}</strong>
+                        </span>
+                        <div>
+                          {t.status === "draft" && (
+                            <Badge className="bg-slate-100 hover:bg-slate-100 border border-slate-300 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 text-[9px] font-bold py-0 h-4">
+                              Taslak
+                            </Badge>
+                          )}
+                          {t.status === "assigned" && (
+                            <Badge className="bg-blue-50 hover:bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-400 text-[9px] font-bold py-0 h-4">
+                              Bildirildi
+                            </Badge>
+                          )}
+                          {t.status === "in_progress" && (
+                            <Badge className="bg-amber-50 hover:bg-amber-50 border border-amber-200 text-amber-700 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-400 text-[9px] font-bold py-0 h-4">
+                              Yolda
+                            </Badge>
+                          )}
+                          {t.status === "completed" && (
+                            <Badge className="bg-emerald-50 hover:bg-emerald-50 border border-emerald-200 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-900 dark:text-emerald-400 text-[9px] font-bold py-0 h-4">
+                              Tamamlandı
+                            </Badge>
+                          )}
+                          {t.status === "cancelled" && (
+                            <Badge className="bg-rose-50 hover:bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950 dark:border-rose-900 dark:text-rose-400 text-[9px] font-bold py-0 h-4">
+                              İptal
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-muted-foreground">Plaka / Sürücü:</span>
+                          <span className="font-bold text-foreground font-mono">
+                            {t.vehicleName || "Atanmadı"} ({t.driverName || "Belirtilmedi"})
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-start">
+                          <span className="font-semibold text-muted-foreground shrink-0 mr-2">Nereden (Açıklama):</span>
+                          <span className="font-semibold text-foreground text-right truncate max-w-[170px]" title={t.pickupLocation}>
+                            {t.pickupLocation}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-muted-foreground">Nereye:</span>
+                          <Badge variant="outline" className="text-[9px] bg-yellow-50/50 border-yellow-200 text-yellow-800 dark:bg-yellow-950/20 dark:border-yellow-900/40 dark:text-yellow-400 font-bold py-0 h-4">
+                            {t.dropoffLocation}
+                          </Badge>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-muted-foreground">Kişi / Masraf:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              {t.notes && (t.notes.includes("CPT") || t.notes.includes("KBN") || t.notes.toLowerCase().includes("cpt") || t.notes.toLowerCase().includes("kbn")) ? (t.notes.includes(" | Plaka:") ? t.notes.split(" | Plaka:")[0] : t.notes) : `${t.passengerCount} Kişi`}
+                            </span>
+                            {costCode !== "-" && (
+                              <Badge className="bg-amber-100 border border-amber-300 text-amber-800 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-400 font-extrabold text-[9px] py-0 h-4">
+                                {costCode}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 justify-end">
+                        <button
+                          onClick={() => setRetypeTask({ ...t, extraDest })}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-400 transition-colors"
+                        >
+                          <ArrowRightLeft className="w-3 h-3" />
+                          Ekstraya Taşı
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTaskToDelete(t);
+                            setConfirmDeleteCheckbox(false);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold border border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/20 dark:border-rose-800 dark:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Sil
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </Card>
         </>
