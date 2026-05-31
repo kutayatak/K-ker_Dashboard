@@ -208,14 +208,20 @@ router.post("/import", async (req, res) => {
     if (excelDate) {
       const [y, m, d] = excelDate.split("-").map(Number);
       const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
+      // Extend end to cover midnight-overflow tasks (e.g. 01:00 next day)
+      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0));
 
       await tx
         .delete(tasksTable)
         .where(
-          and(
-            sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
-          ),
+          sql`
+            ${tasksTable.shiftDate} = ${excelDate}
+            OR (
+              ${tasksTable.shiftDate} IS NULL
+              AND ${tasksTable.scheduledTime} >= ${shiftStart}
+              AND ${tasksTable.scheduledTime} < ${shiftEnd}
+            )
+          `,
         );
     }
 
@@ -306,6 +312,7 @@ router.post("/import", async (req, res) => {
           importKey: t.importKey ?? null,
           rowIndex: t.rowIndex ?? null,
           tableType: t.tableType ?? null,
+          shiftDate: excelDate ?? null,   // anchor to original import date — never drifts with dateOffset
           status,
           vehicleId: isImportCancelled ? null : vehicleId,
         };

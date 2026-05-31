@@ -384,8 +384,8 @@ export function ExcelView() {
     const byDate = new Map<string, { hasActive: boolean }>();
     if (Array.isArray(tasks)) {
       for (const t of tasks as any[]) {
-        if (!t?.scheduledTime) continue;
-        const key = getShiftDateKey(t.scheduledTime);
+        // Prefer shiftDate (exact import date) — falls back to scheduledTime for legacy tasks
+        const key: string = t.shiftDate ?? getShiftDateKey(t.scheduledTime);
         if (!key) continue;
         const prev = byDate.get(key);
         const isActive =
@@ -412,13 +412,19 @@ export function ExcelView() {
   };
 
   // ── Task filtering ──────────────────────────────────────────────────────
+  // Primary filter: shiftDate (the original Excel import date) — immune to midnight-crossing dateOffset.
+  // Fallback: scheduledTime range for legacy tasks imported before shiftDate was introduced.
   const [y, m, ddVal] = selectedDate.split("-").map(Number);
   const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 0, 0, 0, 0));
-  const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 0, 0, 0, 0));
+  // Extend to +2 days to also catch legacy midnight-overflow tasks
+  const shiftEndLegacy = new Date(Date.UTC(y, m - 1, ddVal + 2, 0, 0, 0, 0));
 
-  const dayTasks = (tasks as ExtendedTask[]).filter((t) => {
+  const dayTasks = (tasks as ExtendedTask[]).filter((t: any) => {
+    // New tasks: match exactly on shiftDate (the original import date)
+    if (t.shiftDate) return t.shiftDate === selectedDate;
+    // Legacy tasks (no shiftDate): use scheduledTime range
     const time = new Date(t.scheduledTime);
-    return time >= shiftStart && time < shiftEnd;
+    return time >= shiftStart && time < shiftEndLegacy;
   });
 
   const getPlateFromNotes = (notes: string | null | undefined) => {

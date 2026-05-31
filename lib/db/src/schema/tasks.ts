@@ -20,6 +20,7 @@ export const tasksTable = pgTable("tasks", {
   importKey: text("import_key"),                            // deduplication key (nullable for manually-created tasks)
   rowIndex: integer("row_index"),                           // Excel row index (for plate write-back)
   tableType: text("table_type"),                            // "left" | "right" (Excel table side)
+  shiftDate: text("shift_date"),                            // "YYYY-MM-DD" — the original Excel import date (ignores dateOffset midnight crossings)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("tasks_import_key_idx").on(t.importKey)]);
 
