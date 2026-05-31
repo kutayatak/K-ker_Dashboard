@@ -6,6 +6,7 @@ import {
   useUpdateTask,
   useUpdateVehicle,
   useGetVehicleQueue,
+  useBatchNotifyTasks,
   getListTasksQueryKey,
   type Task,
 } from "@workspace/api-client-react";
@@ -234,6 +235,7 @@ export function ExcelView() {
 
   const updateTaskMutation = useUpdateTask();
   const updateVehicleMutation = useUpdateVehicle();
+  const notifyMutation = useBatchNotifyTasks();
 
   // ── Queue state & drag-and-drop (reorder within queue) ─────────────────
   const [localQueue, setLocalQueue] = useState<any[]>([]);
@@ -580,7 +582,7 @@ export function ExcelView() {
           data: {
             vehicleId: null,
             notes: finalNotes || null,
-            status: customPlate.trim() ? "assigned" : "draft",
+            status: "draft",
           },
         },
         {
@@ -613,7 +615,7 @@ export function ExcelView() {
         data: {
           vehicleId: vId,
           notes: newNotes || null,
-          status: vId ? "assigned" : "draft",
+          status: "draft",
         },
       },
       {
@@ -630,6 +632,20 @@ export function ExcelView() {
       {
         onSuccess: () =>
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
+      },
+    );
+  };
+
+  const handleNotifySingle = (taskId: number) => {
+    notifyMutation.mutate(
+      { data: { taskIds: [taskId] } },
+      {
+        onSuccess: (response: any) => {
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          if (response?.links && response.links.length > 0) {
+            window.open(response.links[0].url, "_blank");
+          }
+        },
       },
     );
   };
@@ -682,29 +698,64 @@ export function ExcelView() {
   }: {
     task: Task;
     className?: string;
-  }) => (
-    <td
-      className={`p-1 transition-colors ${
-        dragOverTaskId === task.id
-          ? "bg-primary/10 ring-1 ring-inset ring-primary/40 rounded"
-          : ""
-      } ${className ?? ""}`}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("text/vehicle-id")) {
-          e.preventDefault();
-          setDragOverTaskId(task.id);
-        }
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          setDragOverTaskId(null);
-        }
-      }}
-      onDrop={(e) => handleTaskDrop(e, task)}
-    >
-      <PlateSelect task={task} />
-    </td>
-  );
+  }) => {
+    const isExcelCompleted = task.status === "completed";
+    const isAssigned = !!task.vehicleId;
+    const isNotified = task.status === "assigned";
+    const isDraft = task.status === "draft";
+
+    return (
+      <td
+        className={`p-1.5 transition-colors relative ${
+          dragOverTaskId === task.id
+            ? "bg-primary/10 ring-1 ring-inset ring-primary/40 rounded"
+            : ""
+        } ${isExcelCompleted ? "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-semibold" : ""} ${className ?? ""}`}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("text/vehicle-id")) {
+            e.preventDefault();
+            setDragOverTaskId(task.id);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setDragOverTaskId(null);
+          }
+        }}
+        onDrop={(e) => handleTaskDrop(e, task)}
+      >
+        <div className="flex flex-col gap-1 w-full">
+          <PlateSelect task={task} />
+          {isAssigned && !isExcelCompleted && (
+            <div className="flex items-center justify-between px-1 text-[10px] select-none">
+              {isNotified ? (
+                <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
+                  <span className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
+                    ✓
+                  </span>
+                  Bildirildi
+                </span>
+              ) : (
+                <>
+                  <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-[8px]"></span>
+                    Bildirilmedi
+                  </span>
+                  <button
+                    onClick={() => handleNotifySingle(task.id)}
+                    disabled={notifyMutation.isPending}
+                    className="px-1.5 py-0.5 bg-primary text-primary-foreground hover:bg-primary/95 text-[9px] font-bold rounded shadow-xs transition-all"
+                  >
+                    {notifyMutation.isPending ? "..." : "Bildir"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+    );
+  };
 
   const handleDownloadExcel = () => {
     window.open(`/api/excel/download?date=${selectedDate}`, "_blank");
