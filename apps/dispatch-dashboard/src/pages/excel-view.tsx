@@ -9,6 +9,7 @@ import {
   useBatchNotifyTasks,
   getListTasksQueryKey,
   type Task,
+  useCreateTask,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -234,6 +235,7 @@ export function ExcelView() {
   });
 
   const updateTaskMutation = useUpdateTask();
+  const createTaskMutation = useCreateTask();
   const updateVehicleMutation = useUpdateVehicle();
   const notifyMutation = useBatchNotifyTasks();
 
@@ -462,8 +464,23 @@ export function ExcelView() {
     time: string; // HH:mm in UTC
     notes: string;
     km: string;
-  }>({ flightCode: "", time: "", notes: "", km: "" });
+    hotelName: string;
+  }>({ flightCode: "", time: "", notes: "", km: "", hotelName: "" });
   const [editSaving, setEditSaving] = useState(false);
+
+  // ── Double-click add state ──────────────────────────────────────────────
+  const [addingTaskState, setAddingTaskState] = useState<{
+    tableType: "left" | "right" | null;
+    type: "hotel_pickup" | "airport_run" | "extra" | "technical";
+  } | null>(null);
+
+  const [addForm, setAddForm] = useState<{
+    flightCode: string;
+    time: string; // HH:mm in UTC
+    notes: string;
+    km: string;
+    hotelName: string;
+  }>({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
 
   const openEdit = (task: Task) => {
     setEditingTask(task);
@@ -472,6 +489,11 @@ export function ExcelView() {
     if (displayNotes.includes(" | Plaka:")) {
       displayNotes = displayNotes.split(" | Plaka:")[0];
     }
+
+    // Resolve hotel name
+    const isRight = (task as ExtendedTask).tableType === "right";
+    const hotel = isRight ? (task.dropoffLocation ?? "") : (task.pickupLocation ?? "");
+
     setEditForm({
       flightCode: task.flightCode ?? "",
       time: utcTime(task.scheduledTime), // HH:mm already UTC
@@ -480,6 +502,7 @@ export function ExcelView() {
         (task as ExtendedTask).km != null
           ? String(Number((task as ExtendedTask).km))
           : "",
+      hotelName: hotel,
     });
   };
 
@@ -501,6 +524,23 @@ export function ExcelView() {
         ? editForm.notes.trim() + plateSection
         : plateSection.trim() || null;
 
+      // Update appropriate location fields based on tableType
+      const isRight = (editingTask as ExtendedTask).tableType === "right";
+      const isTechnical = editingTask.type === "technical";
+
+      let pickupLoc = editingTask.pickupLocation;
+      let dropoffLoc = editingTask.dropoffLocation;
+
+      if (isTechnical) {
+        pickupLoc = editForm.hotelName.trim() || "Teknik İş";
+      } else if (isRight) {
+        pickupLoc = editingTask.pickupLocation || "Esenboğa Havalimanı";
+        dropoffLoc = editForm.hotelName.trim() || "Otel";
+      } else {
+        pickupLoc = editForm.hotelName.trim() || "Otel";
+        dropoffLoc = editingTask.dropoffLocation || "Esenboğa Havalimanı";
+      }
+
       await new Promise<void>((resolve, reject) => {
         updateTaskMutation.mutate(
           {
@@ -510,6 +550,8 @@ export function ExcelView() {
               scheduledTime: newScheduledTime,
               notes: newNotes ?? undefined,
               km: editForm.km === "" ? null : Number(editForm.km),
+              pickupLocation: pickupLoc,
+              dropoffLocation: dropoffLoc,
             },
           },
           {
@@ -526,6 +568,64 @@ export function ExcelView() {
       setEditingTask(null);
     } catch (e) {
       console.error("Edit save failed:", e);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleAddSave = async () => {
+    if (!addingTaskState) return;
+    setEditSaving(true);
+    try {
+      const [hh, mm] = addForm.time.split(":").map(Number);
+      const scheduledTime = `${selectedDate}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00.000Z`;
+
+      const isRight = addingTaskState.tableType === "right";
+      const isTechnical = addingTaskState.type === "technical";
+
+      let pickupLoc = "";
+      let dropoffLoc = "";
+
+      if (isTechnical) {
+        pickupLoc = addForm.hotelName.trim() || "Teknik İş";
+        dropoffLoc = "Teknik İş";
+      } else if (isRight) {
+        pickupLoc = "Esenboğa Havalimanı";
+        dropoffLoc = addForm.hotelName.trim() || "Otel";
+      } else {
+        pickupLoc = addForm.hotelName.trim() || "Otel";
+        dropoffLoc = "Esenboğa Havalimanı";
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        createTaskMutation.mutate(
+          {
+            data: {
+              type: addingTaskState.type,
+              flightCode: addForm.flightCode.trim() || undefined,
+              pickupLocation: pickupLoc,
+              dropoffLocation: dropoffLoc,
+              scheduledTime,
+              passengerCount: 1,
+              notes: addForm.notes.trim() || undefined,
+              km: addForm.km === "" ? null : Number(addForm.km),
+              tableType: addingTaskState.tableType,
+            },
+          },
+          {
+            onSuccess: () => {
+              queryClient.invalidateQueries({
+                queryKey: getListTasksQueryKey(),
+              });
+              resolve();
+            },
+            onError: (err) => reject(err),
+          },
+        );
+      });
+      setAddingTaskState(null);
+    } catch (e) {
+      console.error("Create task failed:", e);
     } finally {
       setEditSaving(false);
     }
@@ -819,12 +919,27 @@ export function ExcelView() {
                 </label>
                 <input
                   type="text"
-                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
                   value={editForm.flightCode}
                   onChange={(e) =>
-                    setEditForm((f) => ({ ...f, flightCode: e.target.value }))
+                    setEditForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
                   }
                   placeholder="Örn: TK123"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {editingTask.type === "technical" ? "TEKNİK AÇIKLAMA" : "OTEL ADI"}
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={editForm.hotelName}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, hotelName: e.target.value }))
+                  }
+                  placeholder={editingTask.type === "technical" ? "Örn: Araç Bakımı" : "Örn: Rixos"}
                 />
               </div>
 
@@ -898,6 +1013,135 @@ export function ExcelView() {
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Save className="w-3.5 h-3.5" />
+                )}
+                Kaydet
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Double-click add modal ───────────────────────────────────────── */}
+      {addingTaskState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAddingTaskState(null);
+          }}
+        >
+          <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <Plus className="w-4 h-4 text-primary" />
+                Yeni İş Ekle
+              </h2>
+              <button
+                onClick={() => setAddingTaskState(null)}
+                className="w-7 h-7 rounded hover:bg-muted flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  UÇUŞ KODU
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
+                  value={addForm.flightCode}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
+                  }
+                  placeholder="Örn: TK123"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {addingTaskState.type === "technical" ? "TEKNİK AÇIKLAMA" : "OTEL ADI"}
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.hotelName}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, hotelName: e.target.value }))
+                  }
+                  placeholder={addingTaskState.type === "technical" ? "Örn: Araç Bakımı" : "Örn: Rixos"}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  SAAT (UTC)
+                </label>
+                <input
+                  type="time"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.time}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, time: e.target.value }))
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  KM
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.km}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, km: e.target.value }))
+                  }
+                  placeholder="KM"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  EKİP / NOTLAR
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.notes}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, notes: e.target.value }))
+                  }
+                  placeholder="Örn: 2CPT 1KBN"
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              💡 Eklenen iş, girilen saate göre otomatik olarak diğer işlerin arasına sıralanacaktır.
+            </p>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAddingTaskState(null)}
+              >
+                İptal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAddSave}
+                disabled={editSaving}
+                className="gap-1.5"
+              >
+                {editSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Plus className="w-3.5 h-3.5" />
                 )}
                 Kaydet
               </Button>
@@ -1141,9 +1385,37 @@ export function ExcelView() {
                   GİDER (GİDEN UÇUŞLAR)
                 </Badge>
               </h3>
-              <span className="text-xs font-mono text-muted-foreground">
-                {leftRegular.length} Gelir / {rightRegular.length} Gider
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-muted-foreground">
+                  {leftRegular.length} Gelir / {rightRegular.length} Gider
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-blue-200 bg-blue-50/10 text-blue-700 hover:bg-blue-50 gap-1 rounded"
+                    onClick={() => {
+                      setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
+                      setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                    }}
+                  >
+                    <Plus className="w-3 h-3 text-blue-600" />
+                    + Sol Ekle
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 bg-amber-50/10 text-amber-700 hover:bg-amber-50 gap-1 rounded"
+                    onClick={() => {
+                      setAddingTaskState({ tableType: "right", type: "airport_run" });
+                      setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                    }}
+                  >
+                    <Plus className="w-3 h-3 text-amber-600" />
+                    + Sağ Ekle
+                  </Button>
+                </div>
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               <table className="w-full border-collapse text-xs font-mono select-none table-fixed">
@@ -1270,17 +1542,16 @@ export function ExcelView() {
                         {leftTask ? (
                           <>
                             <td
-                              className={`p-1.5 text-center font-bold ${lc ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
-                              onDoubleClick={() =>
-                                leftTask && openEdit(leftTask)
-                              }
+                              className={`p-1.5 text-center font-bold cursor-pointer ${lc ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                              onDoubleClick={() => openEdit(leftTask)}
                               title="Çift tıklayarak düzenle"
                             >
                               {idx + 1}
                             </td>
                             <td
-                              className={`p-1.5 font-bold uppercase ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              className={`p-1.5 font-bold uppercase cursor-pointer ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={leftTask.flightCode ?? ""}
+                              onDoubleClick={() => openEdit(leftTask)}
                             >
                               <div className="truncate w-full">
                                 {leftTask.flightCode || "-"}
@@ -1293,21 +1564,24 @@ export function ExcelView() {
                               }
                             />
                             <td
-                              className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 ${lc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-blue-600 dark:text-blue-400"}`}
+                              className={`p-1.5 text-center font-bold bg-blue-50/10 dark:bg-blue-950/10 cursor-pointer ${lc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-blue-950/10" : "text-blue-600 dark:text-blue-400"}`}
+                              onDoubleClick={() => openEdit(leftTask)}
                             >
                               {utcTime(leftTask.scheduledTime)}
                             </td>
                             <td
-                              className={`p-1.5 font-medium ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              className={`p-1.5 font-medium cursor-pointer ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={leftTask.pickupLocation}
+                              onDoubleClick={() => openEdit(leftTask)}
                             >
                               <div className="truncate w-full">
                                 {leftTask.pickupLocation}
                               </div>
                             </td>
                             <td
-                              className={`p-1.5 font-medium ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                              className={`p-1.5 font-medium cursor-pointer ${lc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
                               title={leftTask.notes ?? ""}
+                              onDoubleClick={() => openEdit(leftTask)}
                             >
                               <div className="truncate w-full">
                                 {leftTask.notes &&
@@ -1349,18 +1623,24 @@ export function ExcelView() {
                             <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
                               {idx + 1}
                             </td>
-                            <td colSpan={6} className="bg-slate-50/10" />
+                            <td
+                              colSpan={6}
+                              className="bg-slate-50/10 hover:bg-slate-100/30 cursor-pointer transition-colors"
+                              onDoubleClick={() => {
+                                setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
+                                setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                              }}
+                              title="Çift tıklayarak yeni Gelir (Sol) işi ekle"
+                            />
                           </>
                         )}
                         <td className="bg-slate-100 dark:bg-slate-800 p-0" />
                         {rightTask ? (
                           <>
                             <td
-                              className={`p-1.5 font-bold uppercase ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              className={`p-1.5 font-bold uppercase cursor-pointer ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={rightTask.flightCode ?? ""}
-                              onDoubleClick={() =>
-                                rightTask && openEdit(rightTask)
-                              }
+                              onDoubleClick={() => openEdit(rightTask)}
                             >
                               <div className="truncate w-full">
                                 {rightTask.flightCode || "-"}
@@ -1373,21 +1653,24 @@ export function ExcelView() {
                               }
                             />
                             <td
-                              className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 ${rc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                              className={`p-1.5 text-center font-bold bg-amber-50/10 dark:bg-amber-950/10 cursor-pointer ${rc ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                              onDoubleClick={() => openEdit(rightTask)}
                             >
                               {utcTime(rightTask.scheduledTime)}
                             </td>
                             <td
-                              className={`p-1.5 font-medium ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              className={`p-1.5 font-medium cursor-pointer ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={rightTask.dropoffLocation}
+                              onDoubleClick={() => openEdit(rightTask)}
                             >
                               <div className="truncate w-full">
                                 {rightTask.dropoffLocation}
                               </div>
                             </td>
                             <td
-                              className={`p-1.5 font-medium ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
+                              className={`p-1.5 font-medium cursor-pointer ${rc ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : "text-muted-foreground"}`}
                               title={rightTask.notes ?? ""}
+                              onDoubleClick={() => openEdit(rightTask)}
                             >
                               <div className="truncate w-full">
                                 {rightTask.notes &&
@@ -1427,7 +1710,15 @@ export function ExcelView() {
                             </td>
                           </>
                         ) : (
-                          <td colSpan={6} className="bg-slate-50/10" />
+                          <td
+                            colSpan={6}
+                            className="bg-slate-50/10 hover:bg-slate-100/30 cursor-pointer transition-colors"
+                            onDoubleClick={() => {
+                              setAddingTaskState({ tableType: "right", type: "airport_run" });
+                              setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                            }}
+                            title="Çift tıklayarak yeni Gider (Sağ) işi ekle"
+                          />
                         )}
                       </tr>
                     );
@@ -1436,9 +1727,14 @@ export function ExcelView() {
                     <tr>
                       <td
                         colSpan={14}
-                        className="p-8 text-center text-muted-foreground"
+                        className="p-8 text-center text-muted-foreground hover:bg-slate-50/50 cursor-pointer transition-colors"
+                        onDoubleClick={() => {
+                          setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
+                          setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                        }}
+                        title="Çift tıklayarak yeni iş ekle"
                       >
-                        Seçilen güne ait düzenli sefer kaydı bulunmamaktadır.
+                        Seçilen güne ait düzenli sefer kaydı bulunmamaktadır. Yeni eklemek için çift tıklayın.
                       </td>
                     </tr>
                   )}
@@ -1465,9 +1761,37 @@ export function ExcelView() {
                   EKSTRA GELİR
                 </Badge>
               </h3>
-              <span className="text-xs font-mono text-muted-foreground">
-                {leftExtras.length + rightExtras.length} Ekstra
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-muted-foreground">
+                  {leftExtras.length + rightExtras.length} Ekstra
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 bg-amber-50/10 text-amber-700 hover:bg-amber-50 gap-1 rounded"
+                    onClick={() => {
+                      setAddingTaskState({ tableType: "left", type: "extra" });
+                      setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                    }}
+                  >
+                    <Plus className="w-3 h-3 text-amber-600" />
+                    + Ekstra Gider Ekle
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-emerald-200 bg-emerald-50/10 text-emerald-700 hover:bg-emerald-50 gap-1 rounded"
+                    onClick={() => {
+                      setAddingTaskState({ tableType: "right", type: "extra" });
+                      setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                    }}
+                  >
+                    <Plus className="w-3 h-3 text-emerald-600" />
+                    + Ekstra Gelir Ekle
+                  </Button>
+                </div>
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               <table className="w-full border-collapse text-xs font-mono table-fixed">
@@ -1548,14 +1872,15 @@ export function ExcelView() {
                         {le ? (
                           <>
                             <td
-                              className={`p-1.5 text-center font-bold ${lec ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
+                              className={`p-1.5 text-center font-bold cursor-pointer ${lec ? "bg-rose-50/40 text-rose-700/60 line-through dark:bg-rose-950/20 dark:text-rose-400/50" : "text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10"}`}
                               onDoubleClick={() => le && openEdit(le)}
                               title="Çift tıklayarak düzenle"
                             >
                               {idx + 1}
                             </td>
                             <td
-                              className={`p-1.5 text-center font-bold bg-amber-50/10 ${lec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                              className={`p-1.5 text-center font-bold bg-amber-50/10 cursor-pointer ${lec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                              onDoubleClick={() => le && openEdit(le)}
                             >
                               {utcTime(le.scheduledTime)}
                             </td>
@@ -1566,8 +1891,9 @@ export function ExcelView() {
                               }
                             />
                             <td
-                              className={`p-1.5 font-medium ${lec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
+                              className={`p-1.5 font-medium cursor-pointer ${lec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20 dark:text-rose-400/60 dark:bg-rose-950/10" : ""}`}
                               title={le.pickupLocation}
+                              onDoubleClick={() => le && openEdit(le)}
                             >
                               <div className="truncate w-full">
                                 {le.pickupLocation}
@@ -1579,14 +1905,23 @@ export function ExcelView() {
                             <td className="p-1.5 text-center text-muted-foreground bg-slate-50/50 dark:bg-slate-900/10 font-bold">
                               {idx + 1}
                             </td>
-                            <td colSpan={3} className="bg-slate-50/10" />
+                            <td
+                              colSpan={3}
+                              className="bg-slate-50/10 hover:bg-slate-100/30 cursor-pointer transition-colors"
+                              onDoubleClick={() => {
+                                setAddingTaskState({ tableType: "left", type: "extra" });
+                                setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                              }}
+                              title="Çift tıklayarak yeni Ekstra Gider (Sol) işi ekle"
+                            />
                           </>
                         )}
                         <td className="bg-slate-100 dark:bg-slate-800 p-0" />
                         {re ? (
                           <>
                             <td
-                              className={`p-1.5 text-center font-bold bg-emerald-50/10 ${rec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
+                              className={`p-1.5 text-center font-bold bg-emerald-50/10 cursor-pointer ${rec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
+                              onDoubleClick={() => re && openEdit(re)}
                             >
                               {utcTime(re.scheduledTime)}
                             </td>
@@ -1597,8 +1932,9 @@ export function ExcelView() {
                               }
                             />
                             <td
-                              className={`p-1.5 font-medium ${rec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`}
+                              className={`p-1.5 font-medium cursor-pointer ${rec ? "opacity-60 line-through text-rose-900/80 bg-rose-50/20" : ""}`}
                               title={re.pickupLocation}
+                              onDoubleClick={() => re && openEdit(re)}
                             >
                               <div className="truncate w-full">
                                 {re.pickupLocation}
@@ -1606,7 +1942,15 @@ export function ExcelView() {
                             </td>
                           </>
                         ) : (
-                          <td colSpan={3} className="bg-slate-50/10" />
+                          <td
+                            colSpan={3}
+                            className="bg-slate-50/10 hover:bg-slate-100/30 cursor-pointer transition-colors"
+                            onDoubleClick={() => {
+                              setAddingTaskState({ tableType: "right", type: "extra" });
+                              setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                            }}
+                            title="Çift tıklayarak yeni Ekstra Gelir (Sağ) işi ekle"
+                          />
                         )}
                       </tr>
                     );
@@ -1615,9 +1959,14 @@ export function ExcelView() {
                     <tr>
                       <td
                         colSpan={8}
-                        className="p-6 text-center text-muted-foreground"
+                        className="p-6 text-center text-muted-foreground hover:bg-slate-50/50 cursor-pointer transition-colors"
+                        onDoubleClick={() => {
+                          setAddingTaskState({ tableType: "left", type: "extra" });
+                          setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                        }}
+                        title="Çift tıklayarak yeni Ekstra işi ekle"
                       >
-                        Seçilen güne ait ekstra sefer kaydı bulunmamaktadır.
+                        Seçilen güne ait ekstra sefer kaydı bulunmamaktadır. Yeni eklemek için çift tıklayın.
                       </td>
                     </tr>
                   )}
@@ -1638,9 +1987,23 @@ export function ExcelView() {
                   TEKNİK İŞLER
                 </Badge>
               </h3>
-              <span className="text-xs font-mono text-muted-foreground">
-                {technicalTasks.length} iş
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-mono text-muted-foreground">
+                  {technicalTasks.length} iş
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 bg-amber-50/10 text-amber-700 hover:bg-amber-100 gap-1 rounded"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: null, type: "technical" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-3 h-3 text-amber-600" />
+                  + Teknik İş Ekle
+                </Button>
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               <table className="w-full border-collapse text-xs font-mono table-fixed">
@@ -1697,14 +2060,15 @@ export function ExcelView() {
                         className="divide-x divide-border bg-amber-50/20 dark:bg-amber-950/5 hover:bg-amber-50/50 dark:hover:bg-amber-950/10 transition-colors"
                       >
                         <td
-                          className={`p-1.5 text-center font-bold ${cancelled ? "text-rose-700/60 line-through" : "text-amber-800/70"}`}
+                          className={`p-1.5 text-center font-bold cursor-pointer ${cancelled ? "text-rose-700/60 line-through" : "text-amber-800/70"}`}
                           onDoubleClick={() => openEdit(task)}
                           title="Çift tıklayarak düzenle"
                         >
                           {idx + 1}
                         </td>
                         <td
-                          className={`p-1.5 text-center font-bold ${cancelled ? "text-rose-700/60 line-through" : "text-amber-700"}`}
+                          className={`p-1.5 text-center font-bold cursor-pointer ${cancelled ? "text-rose-700/60 line-through" : "text-amber-700"}`}
+                          onDoubleClick={() => openEdit(task)}
                         >
                           {utcTime(task.scheduledTime)}
                         </td>
@@ -1713,8 +2077,9 @@ export function ExcelView() {
                           className={cancelled ? "opacity-60" : ""}
                         />
                         <td
-                          className={`p-1.5 font-medium ${cancelled ? "opacity-60 line-through text-rose-900/80" : "text-foreground"}`}
+                          className={`p-1.5 font-medium cursor-pointer ${cancelled ? "opacity-60 line-through text-rose-900/80" : "text-foreground"}`}
                           title={task.pickupLocation}
+                          onDoubleClick={() => openEdit(task)}
                         >
                           <div className="truncate w-full">
                             {task.pickupLocation}
@@ -1745,9 +2110,14 @@ export function ExcelView() {
                     <tr>
                       <td
                         colSpan={5}
-                        className="p-6 text-center text-muted-foreground"
+                        className="p-6 text-center text-muted-foreground hover:bg-amber-50/50 cursor-pointer transition-colors"
+                        onDoubleClick={() => {
+                          setAddingTaskState({ tableType: null, type: "technical" });
+                          setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                        }}
+                        title="Çift tıklayarak yeni Teknik işi ekle"
                       >
-                        Seçilen güne ait teknik iş kaydı bulunmamaktadır.
+                        Seçilen güne ait teknik iş kaydı bulunmamaktadır. Yeni eklemek için çift tıklayın.
                       </td>
                     </tr>
                   )}
