@@ -158,7 +158,7 @@ router.get("/download", async (req: any, res: any) => {
   }
 
   // Write back to buffer — preserve existing format
-  const outBuf = await wb.xlsx.writeBuffer();
+  const outBuf = Buffer.from(await wb.xlsx.writeBuffer());
 
   res.setHeader(
     "Content-Type",
@@ -168,7 +168,9 @@ router.get("/download", async (req: any, res: any) => {
     "Content-Disposition",
     `attachment; filename="sevkiyat_${date}.xlsx"`,
   );
-  return res.send(outBuf);
+  res.setHeader("Content-Length", outBuf.length);
+  // Use res.end() for binary data — more reliable in serverless environments
+  return res.end(outBuf);
 });
 
 // GET /excel/files
