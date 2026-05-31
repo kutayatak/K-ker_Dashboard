@@ -1,5 +1,7 @@
 // Vercel Serverless Function bridge
-// Imports the pre-built Express app (compiled by esbuild in api-server's build step)
-import app from "../apps/api-server/dist/app.mjs";
-
-export default app;
+// Dynamic import to support ESM module in Vercel's CommonJS environment
+export default async function handler(req, res) {
+  const appModule = await import("../apps/api-server/dist/app.mjs");
+  const app = appModule.default || appModule;
+  return app(req, res);
+}
