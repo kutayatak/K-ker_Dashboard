@@ -823,10 +823,10 @@ export function ImportTasks() {
               const phone = String(row[4] || "").trim();
               const shift = String(row[5] || "").trim();
 
-              // Valid plate should start with a number (e.g. 06 ...) and have some length
+              // Valid plate should start with a number (e.g. 06 ...) or letter (e.g. S, C) and have some length
               if (
                 plate &&
-                /^\d/.test(plate) &&
+                /^[A-Za-z0-9]/.test(plate) &&
                 isValidValue(row[3]) &&
                 driver &&
                 driver !== "null"

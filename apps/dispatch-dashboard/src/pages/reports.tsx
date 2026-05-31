@@ -236,14 +236,60 @@ export function Reports() {
     ),
   ).sort((a, b) => b.localeCompare(a));
 
-  const outsourceVehicles = vehicles.filter((v) => v.type === "outsource");
-  const outsourceVehicleIds = useMemo(() => new Set(outsourceVehicles.map((v) => v.id)), [outsourceVehicles]);
+  const isEsnafTask = (t: any) => {
+    if (t.type === "technical") return false;
+
+    // Check if vehicle type is outsource
+    if (t.vehicleId) {
+      const v = vehicles.find((veh) => veh.id === t.vehicleId);
+      if (v?.type === "outsource") return true;
+    }
+
+    const resolved = resolveVehicle(t);
+    const plate = resolved.plate ? resolved.plate.trim().toUpperCase() : "";
+    const name = resolved.name ? resolved.name.trim().toUpperCase() : "";
+
+    const normalizedPlate = plate.replace(/[\s\-\.]/g, "");
+    const normalizedName = name.replace(/[\s\-\.]/g, "");
+
+    const startsWithSOrC = (str: string) => {
+      return /^[SC]/i.test(str);
+    };
+
+    if (startsWithSOrC(normalizedPlate) || startsWithSOrC(normalizedName)) {
+      return true;
+    }
+
+    const notePlate = extractPlateFromNotes(t.notes);
+    if (notePlate) {
+      const normalizedNotePlate = notePlate.replace(/[\s\-\.]/g, "").toUpperCase();
+      if (startsWithSOrC(normalizedNotePlate)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const esnafRecords = useMemo(() => {
+    return tasks
+      .filter((t) => t.status === "completed" && isEsnafTask(t))
+      .map((t) => {
+        const rv = resolveVehicle(t);
+        return {
+          id: t.id,
+          date: t.scheduledTime,
+          vehicleId: t.vehicleId ?? -1,
+          vehicleName: rv.plate || rv.name || "Esnaf",
+          taskId: t.id,
+          amount: Number(t.fee || 0),
+          notes: t.notes,
+        };
+      });
+  }, [tasks, vehicles]);
 
   const filteredRecords = useMemo(() => {
-    return records.filter((r) => {
-      const isOutsource = outsourceVehicleIds.has(r.vehicleId);
-      if (!isOutsource) return false;
-
+    return esnafRecords.filter((r) => {
       const monthStr = r.date.substring(0, 7); // YYYY-MM
       const matchesMonth = selectedMonth === "all" || monthStr === selectedMonth;
 
@@ -254,36 +300,33 @@ export function Reports() {
 
       return matchesMonth && matchesQuery;
     });
-  }, [records, outsourceVehicleIds, selectedMonth, searchQuery, vehicles]);
+  }, [esnafRecords, selectedMonth, searchQuery, vehicles]);
 
   const outsourceVehicleSummaries = useMemo(() => {
-    const map = new Map<number, { vehicleId: number; vehicleName: string; driverName: string; totalRevenue: number; tripCount: number }>();
+    const map = new Map<string, { vehicleId: number; vehicleName: string; driverName: string; totalRevenue: number; tripCount: number }>();
     
-    // Initialize with all outsource vehicles
-    outsourceVehicles.forEach((v) => {
-      map.set(v.id, {
-        vehicleId: v.id,
-        vehicleName: v.plate || v.name,
-        driverName: v.driverName || "Belirtilmedi",
-        totalRevenue: 0,
-        tripCount: 0,
-      });
-    });
-
     // Populate from filtered records
     filteredRecords.forEach((r) => {
-      const existing = map.get(r.vehicleId);
+      const existing = map.get(r.vehicleName);
       if (existing) {
         existing.totalRevenue += Number(r.amount);
         existing.tripCount += 1;
+      } else {
+        const vInfo = vehicles.find((v) => v.id === r.vehicleId);
+        map.set(r.vehicleName, {
+          vehicleId: r.vehicleId,
+          vehicleName: r.vehicleName,
+          driverName: vInfo?.driverName || "Esnaf Sürücü",
+          totalRevenue: Number(r.amount),
+          tripCount: 1,
+        });
       }
     });
 
     // Convert to array and sort by revenue descending
     return Array.from(map.values())
-      .filter((s) => s.tripCount > 0 || outsourceVehicles.length <= 10)
       .sort((a, b) => b.totalRevenue - a.totalRevenue);
-  }, [outsourceVehicles, filteredRecords]);
+  }, [filteredRecords, vehicles]);
 
   const filteredTechnicalTasks = technicalTasks
     .filter((t) => {
