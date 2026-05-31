@@ -964,7 +964,7 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         {/* ── Mobile: single active tab ─────────────────────────────── */}
         <div className="flex md:hidden flex-1 flex-col overflow-hidden min-h-0">
           {activeTab === "queue" && (
-            <div className="flex-1 overflow-y-auto space-y-2 pb-24">
+            <div className="flex-1 overflow-y-auto space-y-2 pb-6">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Kuyruk Yönetimi
@@ -1533,7 +1533,7 @@ function MobileTaskList({
     );
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-3 pb-28">
+    <div className="flex-1 overflow-y-auto space-y-3 pb-6">
       {tasks.map((t) => (
         <TaskCard
           key={t.id}

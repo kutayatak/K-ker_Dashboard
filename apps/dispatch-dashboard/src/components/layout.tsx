@@ -152,7 +152,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="hidden md:flex h-14 border-b bg-card items-center px-4 shrink-0">
           <SidebarTrigger />
         </div>
-        <div className="flex-1 overflow-auto p-3 md:p-6 pb-24 md:pb-6">
+        <div className="flex-1 overflow-auto p-3 md:p-6 pb-4 md:pb-6">
           {children}
         </div>
       </main>
