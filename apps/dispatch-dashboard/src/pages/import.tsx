@@ -220,7 +220,7 @@ function buildRegularTask(
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
-    const importKey = `hotel_pickup|${scheduledTime}|${hotelName}|Esenboğa Havalimanı`;
+    const importKey = `hotel_pickup|${scheduledTime}|${hotelName}|Esenboğa Havalimanı|left|r${rowIndex}`;
 
     return {
       type: "hotel_pickup",
@@ -256,7 +256,7 @@ function buildRegularTask(
     const isCancelled =
       plate.toUpperCase() === "İPTAL" || plate.toUpperCase() === "IPTAL";
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
-    const importKey = `airport_run|${scheduledTime}|Esenboğa Havalimanı|${hotelName}`;
+    const importKey = `airport_run|${scheduledTime}|Esenboğa Havalimanı|${hotelName}|right|r${rowIndex}`;
 
     return {
       type: "airport_run",
@@ -309,7 +309,7 @@ function buildEkstraTask(
     const dropoffLocation = isTechnical ? "Teknik Gider" : "Ekstra Gider";
 
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
-    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}`;
+    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}|left|r${rowIndex}`;
 
     return {
       type,
@@ -356,7 +356,7 @@ function buildEkstraTask(
     const dropoffLocation = isTechnical ? "Teknik Gelir" : "Ekstra Gelir";
 
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
-    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}`;
+    const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}|right|r${rowIndex}`;
 
     return {
       type,
