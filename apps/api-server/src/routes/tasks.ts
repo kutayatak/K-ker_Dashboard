@@ -445,12 +445,40 @@ router.post("/batch-notify", async (req, res) => {
       taskIds: updatedTaskIds,
     });
 
-    // Update status to assigned
+    // Update status to completed and handle side effects
     for (const taskId of updatedTaskIds) {
-      await db
+      const [task] = await db
         .update(tasksTable)
-        .set({ status: "assigned" })
-        .where(eq(tasksTable.id, taskId));
+        .set({ status: "completed" })
+        .where(eq(tasksTable.id, taskId))
+        .returning();
+
+      if (task && task.vehicleId) {
+        if (task.fee) {
+          const today = new Date().toISOString().split("T")[0];
+          await db
+            .insert(accountingTable)
+            .values({
+              vehicleId: task.vehicleId,
+              taskId: task.id,
+              amount: task.fee,
+              date: today,
+            })
+            .onConflictDoNothing();
+        }
+
+        // Move vehicle back to empty queue (FIFO — add to end)
+        const all = await db
+          .select({ qp: vehiclesTable.queuePosition })
+          .from(vehiclesTable)
+          .where(eq(vehiclesTable.status, "empty"));
+        const maxPos = all.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);
+
+        await db
+          .update(vehiclesTable)
+          .set({ status: "empty", queuePosition: maxPos + 1 })
+          .where(eq(vehiclesTable.id, task.vehicleId));
+      }
       sent++;
     }
   }

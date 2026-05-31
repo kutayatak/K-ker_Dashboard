@@ -2059,43 +2059,6 @@ function TaskCard({
               )}
             </div>
           ))}
-
-        {/* Quick Touch Actions for Mobile (visible only on mobile touch screens) */}
-        {task.status !== "completed" && task.status !== "cancelled" && (
-          <div className="flex md:hidden items-center justify-end gap-2 mt-2.5 pt-2 border-t border-dashed">
-            <span className="text-[10px] text-muted-foreground mr-auto font-bold uppercase tracking-wider">
-              Hızlı İşlem:
-            </span>
-            {onComplete && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 w-7 p-0 rounded-full bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50 hover:bg-emerald-100 shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onComplete();
-                }}
-                title="Tamamlandı"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-              </Button>
-            )}
-            {onCancel && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 w-7 p-0 rounded-full bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-900/50 hover:bg-rose-100 shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancel();
-                }}
-                title="İptal Et"
-              >
-                <XCircle className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Status stripe */}
