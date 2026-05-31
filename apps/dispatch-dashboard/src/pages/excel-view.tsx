@@ -84,8 +84,8 @@ export function ExcelView() {
   // Extract plate from notes as a fallback if vehicleName is not set
   const getPlateFromNotes = (notes: string | null | undefined) => {
     if (!notes) return null;
-    const match = notes.match(/Plaka:\s*([^\s|]+)/i);
-    return match ? match[1] : null;
+    const match = notes.match(/Plaka:\s*([^|]+)/i);
+    return match ? match[1].trim() : null;
   };
 
   // Group tasks by table type and sort them by rowIndex
@@ -127,6 +127,35 @@ export function ExcelView() {
             vehicleId: null,
             notes: finalNotes || null,
             status: "cancelled",
+          },
+        },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          },
+        }
+      );
+      return;
+    }
+
+    if (vehicleIdVal === "custom") {
+      const customPlate = prompt("Lütfen özel plaka veya plakaları girin (Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456):");
+      if (customPlate === null) return; // cancelled prompt
+
+      let newNotes = task.notes ?? "";
+      const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
+      
+      const finalNotes = customPlate.trim()
+        ? (cleanNotes ? `${cleanNotes} | Plaka: ${customPlate.trim()}` : `Plaka: ${customPlate.trim()}`)
+        : cleanNotes;
+
+      updateTaskMutation.mutate(
+        {
+          id: task.id,
+          data: {
+            vehicleId: null,
+            notes: finalNotes || null,
+            status: customPlate.trim() ? "assigned" : "draft",
           },
         },
         {
@@ -312,11 +341,17 @@ export function ExcelView() {
                         <td className={`p-1 ${leftCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={leftTask.status === "cancelled" ? "cancelled" : (leftTask.vehicleId ?? "")}
+                            value={leftTask.status === "cancelled" ? "cancelled" : (leftTask.vehicleId ?? (getPlateFromNotes(leftTask.notes) ? "custom" : ""))}
                             onChange={(e) => handlePlateChange(leftTask, e.target.value)}
                           >
                             <option value="">Plaka Seçin...</option>
                             <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
+                            <option value="custom" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
+                            {leftTask.vehicleId === null && getPlateFromNotes(leftTask.notes) && (
+                              <option value="custom" className="font-bold text-blue-600">
+                                {getPlateFromNotes(leftTask.notes)} (Özel)
+                              </option>
+                            )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -371,11 +406,17 @@ export function ExcelView() {
                         <td className={`p-1 ${rightCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={rightTask.status === "cancelled" ? "cancelled" : (rightTask.vehicleId ?? "")}
+                            value={rightTask.status === "cancelled" ? "cancelled" : (rightTask.vehicleId ?? (getPlateFromNotes(rightTask.notes) ? "custom" : ""))}
                             onChange={(e) => handlePlateChange(rightTask, e.target.value)}
                           >
                             <option value="">Plaka Seçin...</option>
                             <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
+                            <option value="custom" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
+                            {rightTask.vehicleId === null && getPlateFromNotes(rightTask.notes) && (
+                              <option value="custom" className="font-bold text-blue-600">
+                                {getPlateFromNotes(rightTask.notes)} (Özel)
+                              </option>
+                            )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -483,11 +524,17 @@ export function ExcelView() {
                         <td className={`p-1 ${leftExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${leftExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={leftExtra.status === "cancelled" ? "cancelled" : (leftExtra.vehicleId ?? "")}
+                            value={leftExtra.status === "cancelled" ? "cancelled" : (leftExtra.vehicleId ?? (getPlateFromNotes(leftExtra.notes) ? "custom" : ""))}
                             onChange={(e) => handlePlateChange(leftExtra, e.target.value)}
                           >
                             <option value="">Plaka Seçin...</option>
                             <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
+                            <option value="custom" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
+                            {leftExtra.vehicleId === null && getPlateFromNotes(leftExtra.notes) && (
+                              <option value="custom" className="font-bold text-blue-600">
+                                {getPlateFromNotes(leftExtra.notes)} (Özel)
+                              </option>
+                            )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}
@@ -518,11 +565,17 @@ export function ExcelView() {
                         <td className={`p-1 ${rightExtraCancelled ? "bg-rose-50/20 dark:bg-rose-950/10" : ""}`}>
                           <select
                             className={`w-full bg-transparent p-1 font-semibold focus:outline-none focus:bg-background focus:ring-1 focus:ring-primary/30 hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer rounded transition-all duration-150 ${rightExtraCancelled ? "text-rose-700 dark:text-rose-400 opacity-80" : "text-primary"}`}
-                            value={rightExtra.status === "cancelled" ? "cancelled" : (rightExtra.vehicleId ?? "")}
+                            value={rightExtra.status === "cancelled" ? "cancelled" : (rightExtra.vehicleId ?? (getPlateFromNotes(rightExtra.notes) ? "custom" : ""))}
                             onChange={(e) => handlePlateChange(rightExtra, e.target.value)}
                           >
                             <option value="">Plaka Seçin...</option>
                             <option value="cancelled" className="text-red-600 font-bold">İPTAL</option>
+                            <option value="custom" className="text-blue-600 font-bold">✍️ Özel Plaka Yaz...</option>
+                            {rightExtra.vehicleId === null && getPlateFromNotes(rightExtra.notes) && (
+                              <option value="custom" className="font-bold text-blue-600">
+                                {getPlateFromNotes(rightExtra.notes)} (Özel)
+                              </option>
+                            )}
                             {vehicles.map((v: any) => (
                               <option key={v.id} value={v.id}>
                                 {v.plate} — {v.driverName}

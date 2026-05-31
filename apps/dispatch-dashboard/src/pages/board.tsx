@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -251,6 +252,7 @@ export function Board() {
   const [isNotifyDialogOpen, setIsNotifyDialogOpen] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [assignVehicleId, setAssignVehicleId] = useState<string>("");
+  const [customPlateText, setCustomPlateText] = useState<string>("");
 
   // Edit dialog state
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -276,23 +278,45 @@ export function Board() {
     );
 
   const handleAssignVehicle = async () => {
-    if (!assignVehicleId || !selectedTasks.length) return;
-    const vId = Number(assignVehicleId);
+    if ((!assignVehicleId && !customPlateText.trim()) || !selectedTasks.length) return;
+    const vId = assignVehicleId ? Number(assignVehicleId) : null;
+    const selectedVehicle = vId ? vehicles.find((v: any) => v.id === vId) : null;
     
-    const promises = selectedTasks.map((taskId) =>
-      new Promise<void>((resolve, reject) => {
+    const promises = selectedTasks.map((taskId) => {
+      const task = tasks.find((t: any) => t.id === taskId);
+      if (!task) return Promise.resolve();
+
+      let newNotes = task.notes ?? "";
+      const cleanNotes = newNotes.includes(" | Plaka:") ? newNotes.split(" | Plaka:")[0] : (newNotes.includes(" | İPTAL") ? newNotes.split(" | İPTAL")[0] : (newNotes === "İPTAL" ? "" : newNotes));
+
+      let finalNotes = cleanNotes;
+      if (selectedVehicle) {
+        finalNotes = cleanNotes ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}` : `Plaka: ${selectedVehicle.plate}`;
+      } else if (customPlateText.trim()) {
+        finalNotes = cleanNotes ? `${cleanNotes} | Plaka: ${customPlateText.trim()}` : `Plaka: ${customPlateText.trim()}`;
+      }
+
+      return new Promise<void>((resolve, reject) => {
         updateTaskMutation.mutate(
-          { id: taskId, data: { vehicleId: vId, status: "draft" } },
+          { 
+            id: taskId, 
+            data: { 
+              vehicleId: vId, 
+              status: vId ? "draft" : (customPlateText.trim() ? "assigned" : "draft"),
+              notes: finalNotes || null
+            } 
+          },
           { onSuccess: () => resolve(), onError: (err) => reject(err) }
         );
-      })
-    );
+      });
+    });
 
     try {
       await Promise.all(promises);
       setSelectedTasks([]);
       setIsAssignOpen(false);
       setAssignVehicleId("");
+      setCustomPlateText("");
       queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
     } catch (err) {
       console.error("Batch assign vehicle failed:", err);
@@ -896,7 +920,7 @@ export function Board() {
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
             <p className="text-sm text-muted-foreground">
-              Seçilen <strong>{selectedTasks.length}</strong> işe atanacak şoför ve aracı seçin:
+              Seçilen <strong>{selectedTasks.length}</strong> işe atanacak şoför ve aracı seçin veya özel plaka girin:
             </p>
             
             <div className="space-y-2">
@@ -904,7 +928,10 @@ export function Board() {
               <select
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 value={assignVehicleId}
-                onChange={(e) => setAssignVehicleId(e.target.value)}
+                onChange={(e) => {
+                  setAssignVehicleId(e.target.value);
+                  if (e.target.value) setCustomPlateText("");
+                }}
               >
                 <option value="">Şoför / Araç Seçin...</option>
                 {vehicles.map((v: any) => (
@@ -915,9 +942,22 @@ export function Board() {
               </select>
             </div>
 
+            <div className="space-y-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Veya Özel Plaka Girin (Çoklu da olabilir)</label>
+              <Input
+                type="text"
+                placeholder="Örn: 06 ABC 123 veya 06 ABC 123 / 06 DEF 456"
+                value={customPlateText}
+                onChange={(e) => {
+                  setCustomPlateText(e.target.value);
+                  if (e.target.value) setAssignVehicleId("");
+                }}
+              />
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setAssignVehicleId(""); }}>İptal</Button>
-              <Button onClick={handleAssignVehicle} disabled={!assignVehicleId || updateTaskMutation.isPending}>
+              <Button variant="outline" onClick={() => { setIsAssignOpen(false); setAssignVehicleId(""); setCustomPlateText(""); }}>İptal</Button>
+              <Button onClick={handleAssignVehicle} disabled={(!assignVehicleId && !customPlateText.trim()) || updateTaskMutation.isPending}>
                 {updateTaskMutation.isPending ? "Atanıyor..." : "Araç Ata"}
               </Button>
             </div>
@@ -1333,8 +1373,8 @@ function TaskCard({
   // Extract plate from notes as a fallback if vehicleName is not set
   const getPlateFromNotes = (notes: string | null | undefined) => {
     if (!notes) return null;
-    const match = notes.match(/Plaka:\s*([^\s|]+)/i);
-    return match ? match[1] : null;
+    const match = notes.match(/Plaka:\s*([^|]+)/i);
+    return match ? match[1].trim() : null;
   };
   const displayName = task.vehicleName || getPlateFromNotes(task.notes);
 

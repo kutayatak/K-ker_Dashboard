@@ -120,13 +120,41 @@ router.post("/import", async (req, res) => {
       const status = isImportCancelled ? "cancelled" : (hasPlate ? "completed" : "draft");
 
       if (hasPlate && t.notes && !isImportCancelled) {
-        const plateMatch = t.notes.match(/Plaka:\s*([^\s|]+)/i);
+        const plateMatch = t.notes.match(/Plaka:\s*([^|]+)/i);
         if (plateMatch) {
           const plate = plateMatch[1].trim();
-          const [vehicle] = await db
+          
+          // First try exact match
+          let [vehicle] = await db
             .select({ id: vehiclesTable.id })
             .from(vehiclesTable)
             .where(eq(vehiclesTable.plate, plate));
+            
+          // If not found, try matching prefix (e.g. "06 ABC 123" matches "06 ABC 123 (V1)")
+          if (!vehicle) {
+            const matches = await db
+              .select({ id: vehiclesTable.id, plate: vehiclesTable.plate })
+              .from(vehiclesTable)
+              .where(sql`${vehiclesTable.plate} LIKE ${plate + '%'}`);
+            
+            if (matches.length > 0) {
+              const taskTime = new Date(t.scheduledTime);
+              const hour = taskTime.getHours();
+              
+              // Shift hour logic:
+              // Vardiya 1: 06:00 to 14:00
+              // Vardiya 2: 14:00 to 22:00
+              // Vardiya 3: 22:00 to 06:00
+              let shiftSuffix = "";
+              if (hour >= 6 && hour < 14) shiftSuffix = "(V1)";
+              else if (hour >= 14 && hour < 22) shiftSuffix = "(V2)";
+              else shiftSuffix = "(V3)";
+              
+              const shiftMatch = matches.find(m => m.plate.includes(shiftSuffix));
+              vehicle = shiftMatch || matches[0];
+            }
+          }
+          
           if (vehicle) {
             vehicleId = vehicle.id;
           }

@@ -36,6 +36,7 @@ router.get("/download", async (req, res) => {
       km:        tasksTable.km,
       status:    tasksTable.status,
       type:      tasksTable.type,
+      notes:     tasksTable.notes,
     })
     .from(tasksTable)
     .where(
@@ -53,6 +54,12 @@ router.get("/download", async (req, res) => {
     if (v) vehicleMap.set(id, v.plate);
   }
 
+  const getPlateFromNotes = (notes: string | null | undefined): string => {
+    if (!notes) return "";
+    const match = notes.match(/Plaka:\s*([^|]+)/i);
+    return match ? match[1].trim() : "";
+  };
+
   // Write plates and KM into sheet 1 (index 0) — first sheet is the main list
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (ws) {
@@ -66,11 +73,18 @@ router.get("/download", async (req, res) => {
           if (!ws[`C${row}`]) ws[`C${row}`] = {};
           ws[`C${row}`].v = "İPTAL";
           ws[`C${row}`].t = "s";
-        } else if (task.vehicleId) {
-          const plate = vehicleMap.get(task.vehicleId) ?? "";
-          if (!ws[`C${row}`]) ws[`C${row}`] = {};
-          ws[`C${row}`].v = plate;
-          ws[`C${row}`].t = "s";
+        } else {
+          let plate = "";
+          if (task.vehicleId) {
+            plate = vehicleMap.get(task.vehicleId) ?? "";
+          } else if (task.notes) {
+            plate = getPlateFromNotes(task.notes);
+          }
+          if (plate) {
+            if (!ws[`C${row}`]) ws[`C${row}`] = {};
+            ws[`C${row}`].v = plate;
+            ws[`C${row}`].t = "s";
+          }
         }
         if (task.km) {
           if (!ws[`G${row}`]) ws[`G${row}`] = {};
@@ -96,11 +110,18 @@ router.get("/download", async (req, res) => {
           if (!ws[`I${row}`]) ws[`I${row}`] = {};
           ws[`I${row}`].v = "İPTAL";
           ws[`I${row}`].t = "s";
-        } else if (task.vehicleId) {
-          const plate = vehicleMap.get(task.vehicleId) ?? "";
-          if (!ws[`I${row}`]) ws[`I${row}`] = {};
-          ws[`I${row}`].v = plate;
-          ws[`I${row}`].t = "s";
+        } else {
+          let plate = "";
+          if (task.vehicleId) {
+            plate = vehicleMap.get(task.vehicleId) ?? "";
+          } else if (task.notes) {
+            plate = getPlateFromNotes(task.notes);
+          }
+          if (plate) {
+            if (!ws[`I${row}`]) ws[`I${row}`] = {};
+            ws[`I${row}`].v = plate;
+            ws[`I${row}`].t = "s";
+          }
         }
         if (task.km) {
           if (!ws[`M${row}`]) ws[`M${row}`] = {};
