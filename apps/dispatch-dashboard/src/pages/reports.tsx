@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
   useListAccountingRecords,
   useGetAccountingSummary,
@@ -54,6 +54,53 @@ export function Reports() {
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [retypeTask, setRetypeTask] = useState<any | null>(null); // task pending retype confirm
+  const [plateToDelete, setPlateToDelete] = useState<string | null>(null);
+  const [activeEsnafFilter, setActiveEsnafFilter] = useState<string | null>(null);
+  const [excludedPlates, setExcludedPlates] = useState<string[]>(() => {
+    try {
+      const val = localStorage.getItem("excluded_esnaf_plates");
+      return val ? JSON.parse(val) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const pressTimerRef = useRef<any>(null);
+  const isLongPressRef = useRef(false);
+
+  const handlePressStart = (plate: string) => {
+    isLongPressRef.current = false;
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      setPlateToDelete(plate);
+    }, 700);
+  };
+
+  const handlePressEnd = (plate: string) => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    if (!isLongPressRef.current) {
+      setActiveEsnafFilter(activeEsnafFilter === plate ? null : plate);
+    }
+  };
+
+  const handleExcludePlate = (plate: string) => {
+    const updated = [...excludedPlates, plate];
+    setExcludedPlates(updated);
+    localStorage.setItem("excluded_esnaf_plates", JSON.stringify(updated));
+    setPlateToDelete(null);
+    if (activeEsnafFilter === plate) {
+      setActiveEsnafFilter(null);
+    }
+  };
+
+  const handleResetExcluded = () => {
+    setExcludedPlates([]);
+    localStorage.removeItem("excluded_esnaf_plates");
+  };
 
   const queryClient = useQueryClient();
   const updateTaskMutation = useUpdateTask();
@@ -236,6 +283,20 @@ export function Reports() {
     ),
   ).sort((a, b) => b.localeCompare(a));
 
+  const formatDisplayPlate = (plate: string): string => {
+    const clean = plate.trim();
+    // If it starts with S or C followed immediately by digits (allowing spaces), e.g. S25393 or S 25393 -> S 25393
+    const match = clean.match(/^([SC])\s*(\d+)$/i);
+    if (match) {
+      return `${match[1].toUpperCase()} ${match[2]}`;
+    }
+    return clean.toUpperCase();
+  };
+
+  const normalizeForMap = (plate: string): string => {
+    return plate.replace(/[\s\-\.]/g, "").toUpperCase();
+  };
+
   const isEsnafTask = (t: any) => {
     if (t.type === "technical") return false;
 
@@ -271,6 +332,10 @@ export function Reports() {
     return false;
   };
 
+  const normalizedExcludedPlates = useMemo(() => {
+    return new Set(excludedPlates.map((p) => normalizeForMap(p)));
+  }, [excludedPlates]);
+
   const esnafRecords = useMemo(() => {
     return tasks
       .filter((t) => t.status === "completed" && isEsnafTask(t))
@@ -285,8 +350,9 @@ export function Reports() {
           amount: Number(t.fee || 0),
           notes: t.notes,
         };
-      });
-  }, [tasks, vehicles]);
+      })
+      .filter((r) => !normalizedExcludedPlates.has(normalizeForMap(r.vehicleName)));
+  }, [tasks, vehicles, normalizedExcludedPlates]);
 
   const filteredRecords = useMemo(() => {
     return esnafRecords.filter((r) => {
@@ -301,20 +367,6 @@ export function Reports() {
       return matchesMonth && matchesQuery;
     });
   }, [esnafRecords, selectedMonth, searchQuery, vehicles]);
-
-  const formatDisplayPlate = (plate: string): string => {
-    const clean = plate.trim();
-    // If it starts with S or C followed immediately by digits (allowing spaces), e.g. S25393 or S 25393 -> S 25393
-    const match = clean.match(/^([SC])\s*(\d+)$/i);
-    if (match) {
-      return `${match[1].toUpperCase()} ${match[2]}`;
-    }
-    return clean.toUpperCase();
-  };
-
-  const normalizeForMap = (plate: string): string => {
-    return plate.replace(/[\s\-\.]/g, "").toUpperCase();
-  };
 
   const outsourceVehicleSummaries = useMemo(() => {
     const map = new Map<string, { vehicleId: number; vehicleName: string; driverName: string; totalRevenue: number; tripCount: number }>();
@@ -344,6 +396,15 @@ export function Reports() {
     return Array.from(map.values())
       .sort((a, b) => b.tripCount - a.tripCount);
   }, [filteredRecords, vehicles]);
+
+  const tableRecords = useMemo(() => {
+    let result = filteredRecords;
+    if (activeEsnafFilter) {
+      const normFilter = normalizeForMap(activeEsnafFilter);
+      result = result.filter((r) => normalizeForMap(r.vehicleName) === normFilter);
+    }
+    return [...result].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [filteredRecords, activeEsnafFilter]);
 
   const filteredTechnicalTasks = technicalTasks
     .filter((t) => {
@@ -897,12 +958,56 @@ export function Reports() {
         </div>
       ) : activeTab === "accounting" ? (
         <>
+          {/* ── Excluded Plates & Filter resets ── */}
+          {(excludedPlates.length > 0 || activeEsnafFilter) && (
+            <div className="flex flex-wrap gap-2 items-center text-xs bg-muted/30 p-2.5 rounded-lg border select-none shrink-0 mb-1">
+              <span className="font-semibold text-muted-foreground">Aktif Görünüm:</span>
+              {activeEsnafFilter && (
+                <Badge variant="secondary" className="flex items-center gap-1.5 font-bold bg-primary/10 text-primary hover:bg-primary/15 border-none">
+                  {formatDisplayPlate(activeEsnafFilter)} Gösteriliyor
+                  <button
+                    onClick={() => setActiveEsnafFilter(null)}
+                    className="hover:text-red-500 rounded-full font-bold ml-1 text-[10px]"
+                    title="Filtreyi Temizle"
+                  >
+                    ✕
+                  </button>
+                </Badge>
+              )}
+              {excludedPlates.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] py-1 px-2 border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-red-950 dark:hover:bg-red-950/20 text-red-600 font-semibold"
+                  onClick={handleResetExcluded}
+                >
+                  Gizlenen Plakaları Sıfırla ({excludedPlates.length} araç gizli)
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* ── Esnaf Sefer Listesi Summary Cards ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 shrink-0 select-none">
             {outsourceVehicleSummaries.map((s) => (
               <Card
                 key={s.vehicleName}
-                className="border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200"
+                onMouseDown={() => handlePressStart(s.vehicleName)}
+                onMouseUp={() => handlePressEnd(s.vehicleName)}
+                onMouseLeave={() => {
+                  if (pressTimerRef.current) {
+                    clearTimeout(pressTimerRef.current);
+                    pressTimerRef.current = null;
+                  }
+                }}
+                onTouchStart={() => handlePressStart(s.vehicleName)}
+                onTouchEnd={() => handlePressEnd(s.vehicleName)}
+                className={`border-slate-100 dark:border-slate-800 shadow-sm bg-card hover:border-slate-200 dark:hover:border-slate-700 transition-all duration-200 cursor-pointer active:scale-95 touch-none ${
+                  activeEsnafFilter === s.vehicleName
+                    ? "ring-2 ring-primary bg-primary/5 border-primary/20"
+                    : ""
+                }`}
+                title="Detaylı liste için tek tık, gizlemek için uzun basın"
               >
                 <CardContent className="p-4 flex flex-col justify-between h-full">
                   <div>
@@ -962,7 +1067,7 @@ export function Reports() {
                         Kayıtlar yükleniyor...
                       </TableCell>
                     </TableRow>
-                  ) : filteredRecords.length === 0 ? (
+                  ) : tableRecords.length === 0 ? (
                     <TableRow>
                       <TableCell
                         colSpan={5}
@@ -972,7 +1077,7 @@ export function Reports() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredRecords.map((r) => {
+                    tableRecords.map((r) => {
                       const vInfo = vehicles.find((v) => v.id === r.vehicleId);
                       const displayPlate = formatDisplayPlate(r.vehicleName);
                       return (
@@ -1245,6 +1350,43 @@ export function Reports() {
               }}
             >
               {updateTaskMutation.isPending ? "Güncelleniyor..." : "Evet, Ekstraya Taşı"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Plate Hide/Exclude Confirm Dialog ────────────────────────────── */}
+      <Dialog open={!!plateToDelete} onOpenChange={(open) => { if (!open) setPlateToDelete(null); }}>
+        <DialogContent className="sm:max-w-md bg-card">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <X className="w-4 h-4 text-red-600" />
+              Plakayı Görünümden Gizle
+            </DialogTitle>
+          </DialogHeader>
+          {plateToDelete && (
+            <div className="py-2 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                <span className="font-bold text-foreground">{formatDisplayPlate(plateToDelete)}</span> plakalı araç Esnaf Sefer Listesi'nden tamamen gizlenecektir.
+              </p>
+              <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded p-2 font-semibold">
+                ⚠️ Vardiya araçlarını veya istemediğiniz diğer esnaf gruplarını bu şekilde temizleyebilirsiniz. Gizlenen plakaları dilediğiniz zaman üstteki buton ile geri getirebilirsiniz.
+              </p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPlateToDelete(null)}>
+              Vazgeç
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (plateToDelete) {
+                  handleExcludePlate(plateToDelete);
+                }
+              }}
+            >
+              Evet, Gizle
             </Button>
           </DialogFooter>
         </DialogContent>
