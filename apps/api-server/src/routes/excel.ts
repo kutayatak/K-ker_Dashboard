@@ -32,11 +32,9 @@ router.get("/download", async (req: any, res: any) => {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as any);
 
-  // Fetch tasks for this shift date (D 06:00 to D+1 05:59)
-  const shiftStart = new Date(date);
-  shiftStart.setHours(6, 0, 0, 0);
-  const shiftEnd = new Date(shiftStart);
-  shiftEnd.setDate(shiftEnd.getDate() + 1);
+  const [y, m, d] = date.split("-").map(Number);
+  const shiftStart = new Date(Date.UTC(y, m - 1, d, 6, 0, 0, 0));
+  const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
 
   const tasks = await db
     .select({

@@ -78,22 +78,26 @@ function excelTimeToHHMM(serial: number): string {
 
 // Excel serial date+time or pure time → ISO datetime for base date with offset
 function buildScheduledTime(rawVal: any, baseDateStr: string, dateOffset: number): string {
-  const baseDate = new Date(baseDateStr);
-  baseDate.setDate(baseDate.getDate() + dateOffset);
-  const dateStr = baseDate.toISOString().split("T")[0];
+  const [y, m, d] = baseDateStr.split("-").map(Number);
+  const baseDate = new Date(Date.UTC(y, m - 1, d));
+  baseDate.setUTCDate(baseDate.getUTCDate() + dateOffset);
+  const yyyy = baseDate.getUTCFullYear();
+  const mm = String(baseDate.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(baseDate.getUTCDate()).padStart(2, "0");
+  const dateStr = `${yyyy}-${mm}-${dd}`;
 
-  if (rawVal == null || rawVal === "") return `${dateStr}T00:00:00`;
+  if (rawVal == null || rawVal === "") return `${dateStr}T00:00:00Z`;
   const num = Number(rawVal);
   if (!isNaN(num)) {
     // Excel stores time as fraction of day; dates > 1 have integer part
     const timeFraction = num % 1;
     const hhmm = excelTimeToHHMM(timeFraction);
-    return `${dateStr}T${hhmm}:00`;
+    return `${dateStr}T${hhmm}:00Z`;
   }
   // String like "04:30"
   const str = String(rawVal).trim();
-  if (/^\d{1,2}:\d{2}$/.test(str)) return `${dateStr}T${str.padStart(5, "0")}:00`;
-  return `${dateStr}T00:00:00`;
+  if (/^\d{1,2}:\d{2}$/.test(str)) return `${dateStr}T${str.padStart(5, "0")}:00Z`;
+  return `${dateStr}T00:00:00Z`;
 }
 
 // Extract total minutes from Excel serial time or string "HH:MM"

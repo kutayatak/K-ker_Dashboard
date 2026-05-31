@@ -176,12 +176,12 @@ export function ExcelView() {
   const getShiftDateKey = (scheduledTime: string) => {
     const d = new Date(scheduledTime);
     if (isNaN(d.getTime())) return "";
-    const hours = d.getHours();
-    const shiftDate = new Date(d);
+    const hours = d.getUTCHours();
+    const shiftDate = new Date(d.getTime());
     if (hours < 6) {
-      shiftDate.setDate(shiftDate.getDate() - 1);
+      shiftDate.setUTCDate(shiftDate.getUTCDate() - 1);
     }
-    return `${shiftDate.getFullYear()}-${String(shiftDate.getMonth() + 1).padStart(2, "0")}-${String(shiftDate.getDate()).padStart(2, "0")}`;
+    return `${shiftDate.getUTCFullYear()}-${String(shiftDate.getUTCMonth() + 1).padStart(2, "0")}-${String(shiftDate.getUTCDate()).padStart(2, "0")}`;
   };
 
   // Pre-compute calendar day status
@@ -213,10 +213,9 @@ export function ExcelView() {
   const calendarModifiers = { completed: completedDays, uncompleted: uncompletedDays };
 
   // Filter tasks within the 24-hour shift window (D 06:00 to D+1 05:59)
-  const shiftStart = new Date(selectedDate);
-  shiftStart.setHours(6, 0, 0, 0);
-  const shiftEnd = new Date(shiftStart);
-  shiftEnd.setDate(shiftEnd.getDate() + 1);
+  const [y, m, ddVal] = selectedDate.split("-").map(Number);
+  const shiftStart = new Date(Date.UTC(y, m - 1, ddVal, 6, 0, 0, 0));
+  const shiftEnd = new Date(Date.UTC(y, m - 1, ddVal + 1, 6, 0, 0, 0));
 
   const dayTasks = (tasks as ExtendedTask[]).filter((t) => {
     const time = new Date(t.scheduledTime);

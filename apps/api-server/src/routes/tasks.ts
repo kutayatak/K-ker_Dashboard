@@ -184,10 +184,9 @@ router.post("/import", async (req, res) => {
   // Execute all inserts/updates in a single transaction for maximum speed
   await db.transaction(async (tx: any) => {
     if (excelDate) {
-      const shiftStart = new Date(excelDate);
-      shiftStart.setHours(6, 0, 0, 0);
-      const shiftEnd = new Date(shiftStart);
-      shiftEnd.setDate(shiftEnd.getDate() + 1);
+      const [y, m, d] = excelDate.split("-").map(Number);
+      const shiftStart = new Date(Date.UTC(y, m - 1, d, 6, 0, 0, 0));
+      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 6, 0, 0, 0));
 
       await tx
         .delete(tasksTable)
