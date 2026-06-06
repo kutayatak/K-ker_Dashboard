@@ -411,4 +411,68 @@ router.get("/debug-tasks", async (req, res) => {
   }
 });
 
+// GET /excel/db-diagnostic
+// Runs diagnostics on DB connection and tables, returning detailed errors (including stacks)
+router.get("/db-diagnostic", async (req: any, res: any) => {
+  const report: any = {
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV,
+    hasDatabaseUrl: !!process.env.DATABASE_URL,
+    checks: {}
+  };
+
+  try {
+    const start = Date.now();
+    await db.execute(sql`SELECT 1`);
+    report.checks.dbConnection = { ok: true, durationMs: Date.now() - start };
+  } catch (err: any) {
+    report.checks.dbConnection = {
+      ok: false,
+      message: err?.message ?? String(err),
+      code: err?.code,
+      stack: err?.stack
+    };
+  }
+
+  try {
+    const start = Date.now();
+    const countRes = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(excelFilesTable);
+    report.checks.excelFilesTable = {
+      ok: true,
+      count: countRes[0]?.count ?? 0,
+      durationMs: Date.now() - start
+    };
+  } catch (err: any) {
+    report.checks.excelFilesTable = {
+      ok: false,
+      message: err?.message ?? String(err),
+      code: err?.code,
+      stack: err?.stack
+    };
+  }
+
+  try {
+    const start = Date.now();
+    const countRes = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(tasksTable);
+    report.checks.tasksTable = {
+      ok: true,
+      count: countRes[0]?.count ?? 0,
+      durationMs: Date.now() - start
+    };
+  } catch (err: any) {
+    report.checks.tasksTable = {
+      ok: false,
+      message: err?.message ?? String(err),
+      code: err?.code,
+      stack: err?.stack
+    };
+  }
+
+  return res.json(report);
+});
+
 export default router;
