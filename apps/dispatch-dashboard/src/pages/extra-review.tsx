@@ -239,6 +239,31 @@ export function ExtraReview() {
         </div>
       </div>
 
+      {/* ── DEBUG PANEL (Temporary) ─────────────────────────────────── */}
+      <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 p-4 rounded-lg text-xs space-y-2 text-red-800 dark:text-red-400">
+        <h3 className="font-bold text-sm">Debug Panel:</h3>
+        <p>Toplam Gelen Görev: {tasks.length}</p>
+        <p>Ekstra Görev (Filtresiz): {tasks.filter(t => t.type === "extra").length}</p>
+        <p>Ekstra Görev (Filtreli): {extraTasks.length}</p>
+        <div className="space-y-1.5 max-h-60 overflow-auto font-mono bg-white dark:bg-slate-900 p-2 border dark:border-slate-800 rounded">
+          {tasks.filter(t => t.type === "extra").slice(0, 15).map(t => {
+            const combined = `${t.pickupLocation || ""} ${t.dropoffLocation || ""} ${t.notes || ""} ${t.flightCode || ""}`.toLowerCase();
+            const normalized = combined.replace(/i̇/g, "i").replace(/ı/g, "i");
+            const blacklist = ["vip", "ajet", "yolcu", "iptal"];
+            const matchedWord = blacklist.find(w => normalized.includes(w));
+            return (
+              <div key={t.id} className="border-b dark:border-slate-800 pb-1.5 last:border-none">
+                ID: {t.id} | Desc: {t.pickupLocation} | Dropoff: {t.dropoffLocation} | Notes: {t.notes} | Flight: {t.flightCode} 
+                <br />
+                <span className={matchedWord ? "text-red-600 font-bold" : "text-green-600 font-bold"}>
+                  {matchedWord ? `ENGELLENDİ (Kelime: ${matchedWord})` : "GEÇTİ"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── Filter Bar ─────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-muted/40 p-3 rounded-lg border border-border/50 shrink-0 shadow-xs select-none">
         <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
