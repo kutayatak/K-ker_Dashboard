@@ -182,7 +182,8 @@ export const CreateTaskBody = zod.object({
   "km": zod.union([zod.number(),zod.string()]).nullish(),
   "importKey": zod.string().nullish(),
   "rowIndex": zod.number().nullish(),
-  "tableType": zod.string().nullish()
+  "tableType": zod.string().nullish(),
+  "shiftDate": zod.string().nullish()
 })
 
 

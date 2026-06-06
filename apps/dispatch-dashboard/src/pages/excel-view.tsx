@@ -683,6 +683,7 @@ export function ExcelView() {
               notes: addForm.notes.trim() || undefined,
               km: addForm.km === "" ? null : Number(addForm.km),
               tableType: addingTaskState.tableType,
+              shiftDate: selectedDate,
             },
           },
           {
@@ -1318,7 +1319,24 @@ export function ExcelView() {
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base flex items-center gap-2">
                 <Plus className="w-4 h-4 text-primary" />
-                Yeni İş Ekle
+                {addingTaskState.type === "extra"
+                  ? "Ekstra İş Ekle"
+                  : addingTaskState.type === "technical"
+                    ? "Teknik İş Ekle"
+                    : addingTaskState.tableType === "left"
+                      ? "GELİR Ekle"
+                      : "GİDER Ekle"}
+                {addingTaskState.type === "extra" && (
+                  <span
+                    className={`ml-1 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wide ${
+                      addingTaskState.tableType === "left"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        : "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300"
+                    }`}
+                  >
+                    {addingTaskState.tableType === "left" ? "▲ GELİR" : "▼ GİDER"}
+                  </span>
+                )}
               </h2>
               <button
                 onClick={() => setAddingTaskState(null)}
@@ -1327,6 +1345,29 @@ export function ExcelView() {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {addingTaskState.type === "extra" && (
+              <div
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium border ${
+                  addingTaskState.tableType === "left"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300"
+                    : "bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-800 dark:text-orange-300"
+                }`}
+              >
+                {addingTaskState.tableType === "left" ? (
+                  <>
+                    <span className="text-base">📥</span>
+                    <span>Bu iş <strong>GELİR</strong> sütununa eklenecek — havalimanından otele gelen sefer.</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-base">📤</span>
+                    <span>Bu iş <strong>GİDER</strong> sütununa eklenecek — otelden havalimanına giden sefer.</span>
+                  </>
+                )}
+              </div>
+            )}
+
 
             <div className="grid grid-cols-2 gap-3">
               {addingTaskState.type !== "extra" && (

@@ -148,7 +148,9 @@ router.post("/upload", async (req: any, res: any) => {
 });
 
 // GET /excel/download?date=YYYY-MM-DD
-// Returns the stored Excel file with plate values written to the correct cells
+// Returns the stored Excel file with plate values written to the correct cells.
+// If no template is stored for the date, falls back to generating a clean workbook
+// from manually-added tasks (rowIndex == null) so they are never silently dropped.
 router.get("/download", async (req: any, res: any) => {
   const date = req.query.date as string;
   if (!date)
@@ -161,30 +163,19 @@ router.get("/download", async (req: any, res: any) => {
     const requestedYMD = normalizeToYMD(date);
     const requestedDMY = formatToDDMMYY(requestedYMD);
 
-    // Fetch matching file record only to avoid loading everything
+    // Fetch matching file record (may be null — handled below)
     const files = await db
       .select()
       .from(excelFilesTable)
       .where(inArray(excelFilesTable.date, [requestedYMD, requestedDMY]))
       .limit(1);
-    const file = files[0];
-
-    if (!file)
-      return res
-        .status(404)
-        .json({ error: `No Excel file stored for this date (tried: ${requestedYMD} / ${requestedDMY})` });
-
-    // Decode base64 → buffer → workbook
-    // Strip data URL prefix if present (e.g. "data:...;base64,")
-    const rawData = file.data.includes(",") ? file.data.split(",")[1] : file.data;
-    const buf = Buffer.from(rawData, "base64");
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf as any);
+    const file = files[0] ?? null;
 
     const [y, m, d] = requestedYMD.split("-").map(Number);
     const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-    const shiftEnd = new Date(Date.UTC(y, m - 1, d + 1, 0, 0, 0, 0));
+    const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0)); // +2 to catch midnight-overflow legacy tasks
 
+    // Fetch all tasks for this shift date
     const tasks = await db
       .select({
         rowIndex: tasksTable.rowIndex,
@@ -194,6 +185,10 @@ router.get("/download", async (req: any, res: any) => {
         status: tasksTable.status,
         type: tasksTable.type,
         notes: tasksTable.notes,
+        scheduledTime: tasksTable.scheduledTime,
+        flightCode: tasksTable.flightCode,
+        pickupLocation: tasksTable.pickupLocation,
+        dropoffLocation: tasksTable.dropoffLocation,
       })
       .from(tasksTable)
       .where(
@@ -206,6 +201,13 @@ router.get("/download", async (req: any, res: any) => {
           )
         `,
       );
+
+    // If no template AND no tasks at all → return 404
+    if (!file && tasks.length === 0) {
+      return res
+        .status(404)
+        .json({ error: `Bu tarih için kayıtlı Excel dosyası veya iş bulunamadı (${requestedYMD})` });
+    }
 
     // Load vehicle plates in a single batch query to avoid N+1 issue
     const vehicleIds = [
@@ -228,87 +230,59 @@ router.get("/download", async (req: any, res: any) => {
       return match ? match[1].trim() : "";
     };
 
-    // Write plates and KM into sheet 1 (index 0) — first sheet is the main list
-    const ws = wb.worksheets[0];
-    if (ws) {
-      for (const task of tasks) {
-        if (task.rowIndex == null) continue;
-        const row = task.rowIndex; // 1-based Excel row
+    const wb = new ExcelJS.Workbook();
 
-        if (task.tableType === "left") {
-          // GELİR — left table: PLAKA = C, KM = G
-          const cellPlate = ws.getCell(`C${row}`);
-          const cellKm = ws.getCell(`G${row}`);
+    // ── CASE A: Template exists → load it and overlay plate/km data ──────
+    if (file) {
+      const rawData = file.data.includes(",") ? file.data.split(",")[1] : file.data;
+      const buf = Buffer.from(rawData, "base64");
+      await wb.xlsx.load(buf as any);
 
-          if (task.status === "cancelled") {
-            cellPlate.value = "İPTAL";
-            cellKm.value = 0;
-          } else {
-            let plate = "";
-            if (task.vehicleId) {
-              plate = vehicleMap.get(task.vehicleId) ?? "";
-            } else if (task.notes) {
-              plate = getPlateFromNotes(task.notes);
-            }
-            if (plate) {
-              cellPlate.value = simplifyPlate(plate);
-            }
-            if (task.km) {
-              cellKm.value = Number(task.km);
-            }
-          }
+      const ws = wb.worksheets[0];
+      if (ws) {
+        for (const task of tasks) {
+          if (task.rowIndex == null) continue;
+          const row = task.rowIndex; // 1-based Excel row
 
-          // Apply yellow background to technical tasks if possible
-          if (task.type === "technical") {
-            ["B", "C", "D", "G"].forEach((col) => {
-              const cell = ws.getCell(`${col}${row}`);
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: "FFFFFFFF" },
-              };
-            });
-          }
-        } else if (task.tableType === "right") {
-          // GİDER — right table: PLAKA = I, KM = M
-          const cellPlate = ws.getCell(`I${row}`);
-          const cellKm = ws.getCell(`M${row}`);
-
-          if (task.status === "cancelled") {
-            cellPlate.value = "İPTAL";
-            cellKm.value = 0;
-          } else {
-            let plate = "";
-            if (task.vehicleId) {
-              plate = vehicleMap.get(task.vehicleId) ?? "";
-            } else if (task.notes) {
-              plate = getPlateFromNotes(task.notes);
+          if (task.tableType === "left") {
+            const cellPlate = ws.getCell(`C${row}`);
+            const cellKm = ws.getCell(`G${row}`);
+            if (task.status === "cancelled") {
+              cellPlate.value = "İPTAL";
+              cellKm.value = 0;
+            } else {
+              let plate = "";
+              if (task.vehicleId) plate = vehicleMap.get(task.vehicleId) ?? "";
+              else if (task.notes) plate = getPlateFromNotes(task.notes);
+              if (plate) cellPlate.value = simplifyPlate(plate);
+              if (task.km) cellKm.value = Number(task.km);
             }
-            if (plate) {
-              cellPlate.value = simplifyPlate(plate);
+          } else if (task.tableType === "right") {
+            const cellPlate = ws.getCell(`I${row}`);
+            const cellKm = ws.getCell(`M${row}`);
+            if (task.status === "cancelled") {
+              cellPlate.value = "İPTAL";
+              cellKm.value = 0;
+            } else {
+              let plate = "";
+              if (task.vehicleId) plate = vehicleMap.get(task.vehicleId) ?? "";
+              else if (task.notes) plate = getPlateFromNotes(task.notes);
+              if (plate) cellPlate.value = simplifyPlate(plate);
+              if (task.km) cellKm.value = Number(task.km);
             }
-            if (task.km) {
-              cellKm.value = Number(task.km);
-            }
-          }
-
-          // Apply yellow background to technical tasks if possible
-          if (task.type === "technical") {
-            ["H", "I", "J", "M"].forEach((col) => {
-              const cell = ws.getCell(`${col}${row}`);
-              cell.fill = {
-                type: "pattern",
-                pattern: "solid",
-                fgColor: { argb: "FFFFFFFF" },
-              };
-            });
           }
         }
+
+        // Append manually-added tasks (rowIndex == null) after the template rows
+        appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes);
       }
+    } else {
+      // ── CASE B: No template → generate a clean workbook with all tasks ──
+      const ws = wb.addWorksheet(`Sevkiyat ${requestedYMD}`);
+      appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes);
     }
 
     // Write back to buffer and send
-    // NOTE: Do NOT set Content-Length — it causes truncation in some serverless envs
     const outBuf = Buffer.from(await wb.xlsx.writeBuffer());
 
     res.setHeader(
@@ -319,7 +293,6 @@ router.get("/download", async (req: any, res: any) => {
       "Content-Disposition",
       `attachment; filename="sevkiyat_${requestedYMD}.xlsx"`,
     );
-    // Use res.send() — handles binary buffers correctly in serverless environments
     return res.send(outBuf);
   } catch (err: any) {
     console.error("[excel/download] error:", err);
@@ -329,6 +302,121 @@ router.get("/download", async (req: any, res: any) => {
     });
   }
 });
+
+/**
+ * Appends manually-added tasks (rowIndex == null) to a worksheet as a clearly-labelled
+ * table at the bottom. Used both when a template exists (appended after template rows)
+ * and when no template exists (entire worksheet is built from scratch).
+ */
+function appendManualTasks(
+  ws: ExcelJS.Worksheet,
+  tasks: Array<{
+    rowIndex: number | null;
+    tableType: string | null;
+    vehicleId: number | null;
+    km: string | null;
+    status: string;
+    type: string;
+    notes: string | null;
+    scheduledTime: Date;
+    flightCode: string | null;
+    pickupLocation: string;
+    dropoffLocation: string;
+  }>,
+  vehicleMap: Map<number, string>,
+  getPlateFromNotes: (notes: string | null | undefined) => string,
+) {
+  const manualTasks = tasks.filter((t) => t.rowIndex == null);
+  if (manualTasks.length === 0) return;
+
+  // Sort by scheduled time
+  manualTasks.sort(
+    (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime(),
+  );
+
+  let lastRow = ws.rowCount + 2; // leave a blank separator
+
+  // Section header
+  const headerRow = ws.getRow(lastRow);
+  headerRow.getCell(1).value = "Elle Eklenen İşler";
+  headerRow.getCell(1).font = { bold: true, size: 12, color: { argb: "FF1D6348" } };
+  headerRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1FAE5" } };
+  headerRow.commit();
+  lastRow++;
+
+  // Column headers
+  const cols = ["S.NO", "TİP", "UÇUŞ KODU", "SAAT", "NEREDEN", "NEREYE", "PLAKA", "EKİP", "KM", "DURUM"];
+  const colHeaderRow = ws.getRow(lastRow);
+  cols.forEach((col, i) => {
+    const cell = colHeaderRow.getCell(i + 1);
+    cell.value = col;
+    cell.font = { bold: true };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+    cell.border = {
+      bottom: { style: "thin", color: { argb: "FF9CA3AF" } },
+    };
+  });
+  colHeaderRow.commit();
+  lastRow++;
+
+  let sno = 1;
+  for (const task of manualTasks) {
+    const plate = (() => {
+      if (task.status === "cancelled") return "İPTAL";
+      let p = "";
+      if (task.vehicleId) p = vehicleMap.get(task.vehicleId) ?? "";
+      else if (task.notes) p = getPlateFromNotes(task.notes);
+      return p ? simplifyPlate(p) : "";
+    })();
+
+    const crew = (() => {
+      if (!task.notes) return "";
+      const parts = task.notes.split(/plaka:/i);
+      let c = parts[0].trim();
+      if (c.endsWith("|")) c = c.slice(0, -1).trim();
+      return c;
+    })();
+
+    const scheduledDate =
+      task.scheduledTime instanceof Date ? task.scheduledTime : new Date(task.scheduledTime as any);
+    const timeStr = isNaN(scheduledDate.getTime())
+      ? ""
+      : `${String(scheduledDate.getUTCHours()).padStart(2, "0")}:${String(scheduledDate.getUTCMinutes()).padStart(2, "0")}`;
+
+    const typeLabel =
+      task.type === "hotel_pickup"
+        ? "GELİR"
+        : task.type === "airport_run"
+          ? "GİDER"
+          : task.type === "extra"
+            ? task.tableType === "left" ? "EKSTRA GELİR" : "EKSTRA GİDER"
+            : "TEKNİK";
+
+    const statusLabel =
+      task.status === "cancelled"
+        ? "İPTAL"
+        : task.status === "completed"
+          ? "Tamamlandı"
+          : "Taslak";
+
+    const dataRow = ws.getRow(lastRow);
+    dataRow.getCell(1).value = sno++;
+    dataRow.getCell(2).value = typeLabel;
+    dataRow.getCell(3).value = task.flightCode ?? "";
+    dataRow.getCell(4).value = timeStr;
+    dataRow.getCell(5).value = task.pickupLocation ?? "";
+    dataRow.getCell(6).value = task.dropoffLocation ?? "";
+    dataRow.getCell(7).value = plate;
+    dataRow.getCell(8).value = crew;
+    dataRow.getCell(9).value = task.km ? Number(task.km) : "";
+    dataRow.getCell(10).value = statusLabel;
+    dataRow.commit();
+    lastRow++;
+  }
+}
+
+
+
 
 // GET /excel/files
 // Returns a list of all stored Excel files

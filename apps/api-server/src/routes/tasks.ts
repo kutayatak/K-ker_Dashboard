@@ -695,6 +695,12 @@ router.post("/", async (req, res) => {
     }
   }
 
+  // Derive shiftDate: use value sent by frontend if present, otherwise derive from scheduledTime (UTC date)
+  const shiftDateValue: string =
+    (req.body as any).shiftDate ??
+    new Date(parsed.data.scheduledTime).toISOString().split("T")[0];
+
+
   const [task] = await db
     .insert(tasksTable)
     .values({
@@ -702,6 +708,7 @@ router.post("/", async (req, res) => {
       scheduledTime: new Date(parsed.data.scheduledTime),
       fee: parsed.data.fee != null ? String(parsed.data.fee) : null,
       km,
+      shiftDate: shiftDateValue,
     })
     .returning();
 
