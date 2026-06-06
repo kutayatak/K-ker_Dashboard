@@ -901,16 +901,19 @@ export function ExcelView() {
         task.type === "airport_run"
           ? task.dropoffLocation
           : task.pickupLocation;
-      const crew = task.notes
-        ? task.notes.includes(" | Plaka:")
-          ? task.notes.split(" | Plaka:")[0]
-          : task.notes.includes(" | İPTAL")
-            ? task.notes.split(" | İPTAL")[0]
-            : task.notes === "İPTAL"
-              ? ""
-              : task.notes
-        : "";
-      const parts = [task.flightCode, time, location, crew, direction].filter(Boolean);
+
+      const getCrewWithoutPlate = (n: string | null | undefined) => {
+        if (!n) return "";
+        const parts = n.split(/plaka:/i);
+        let c = parts[0].trim();
+        if (c.endsWith("|")) c = c.slice(0, -1).trim();
+        return c;
+      };
+      const crew = getCrewWithoutPlate(task.notes);
+
+      const parts = task.type === "extra"
+        ? [time, location, crew].filter(Boolean)
+        : [task.flightCode, time, location, crew, direction].filter(Boolean);
       return parts.join("   ");
     };
 

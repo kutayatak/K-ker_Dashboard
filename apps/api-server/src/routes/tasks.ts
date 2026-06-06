@@ -586,11 +586,14 @@ router.post("/batch-notify", async (req, res) => {
             timeZone: "UTC", // Use UTC for formatting since the DB timestamp overrides to UTC format
           });
           // Crew notes: use notes field (already contains crew info like "2CPT"), strip plate part
-          const crew = task.notes
-            ? task.notes.includes(" | Plaka:")
-              ? task.notes.split(" | Plaka:")[0]
-              : task.notes
-            : "";
+          const getCrewWithoutPlate = (n: string | null | undefined) => {
+            if (!n) return "";
+            const parts = n.split(/plaka:/i);
+            let c = parts[0].trim();
+            if (c.endsWith("|")) c = c.slice(0, -1).trim();
+            return c;
+          };
+          const crew = getCrewWithoutPlate(task.notes);
           // Direction label based on type
           const direction =
             task.type === "airport_run"
@@ -606,8 +609,9 @@ router.post("/batch-notify", async (req, res) => {
           // Flight code
           const flight = task.flightCode ?? "";
 
-          // Format: "FMF 183   06:00   RİXOS   2CPT   GELİR"
-          const parts = [flight, time, location, crew, direction].filter(Boolean);
+          const parts = task.type === "extra"
+            ? [time, location, crew].filter(Boolean)
+            : [flight, time, location, crew, direction].filter(Boolean);
           messageText += parts.join("   ") + "\n";
           updatedTaskIds.push(task.id);
         }
