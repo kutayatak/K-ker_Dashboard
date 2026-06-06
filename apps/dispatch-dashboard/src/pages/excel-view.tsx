@@ -2477,6 +2477,8 @@ export function ExcelView() {
         getPlateFromNotes={getPlateFromNotes}
         openEdit={openEdit}
         tasksPending={tasksPending}
+        setAddingTaskState={setAddingTaskState}
+        setAddForm={setAddForm}
       />
     </div>
   );
@@ -2507,6 +2509,8 @@ function MobileExcelView({
   handlePlateChange,
   getPlateFromNotes,
   openEdit,
+  setAddingTaskState,
+  setAddForm,
 }: {
   dayTasks: ExtendedTask[];
   leftRegular: ExtendedTask[];
@@ -2531,6 +2535,8 @@ function MobileExcelView({
   getPlateFromNotes: (notes: string | null | undefined) => string | null;
   openEdit: (task: Task) => void;
   tasksPending: boolean;
+  setAddingTaskState: (state: { tableType: "left" | "right" | null; type: "hotel_pickup" | "airport_run" | "extra" | "technical" } | null) => void;
+  setAddForm: (form: { flightCode: string; time: string; notes: string; km: string; hotelName: string }) => void;
 }) {
   const [activeTab, setActiveTab] = useState<MobileTab>("gelir");
 
@@ -2736,6 +2742,71 @@ function MobileExcelView({
           </button>
         ))}
       </div>
+
+      {/* Add task button on mobile */}
+      {activeTab !== "sira" && (
+        <div className="flex gap-2">
+          {activeTab === "ekstra" ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-9 font-bold border-emerald-200 text-emerald-700 bg-emerald-50/10 hover:bg-emerald-50 gap-1 rounded shadow-xs"
+                onClick={() => {
+                  setAddingTaskState({ tableType: "left", type: "extra" });
+                  setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                }}
+              >
+                <Plus className="w-4 h-4 text-emerald-600" />
+                + Gelir Ekle
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-9 font-bold border-amber-200 text-amber-700 bg-amber-50/10 hover:bg-amber-50 gap-1 rounded shadow-xs"
+                onClick={() => {
+                  setAddingTaskState({ tableType: "right", type: "extra" });
+                  setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                }}
+              >
+                <Plus className="w-4 h-4 text-amber-600" />
+                + Gider Ekle
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className={`w-full h-9 font-bold gap-1 rounded shadow-xs ${
+                activeTab === "gelir"
+                  ? "border-blue-200 text-blue-700 bg-blue-50/10 hover:bg-blue-50"
+                  : activeTab === "gider"
+                    ? "border-amber-200 text-amber-700 bg-amber-50/10 hover:bg-amber-50"
+                    : "border-orange-200 text-orange-700 bg-orange-50/10 hover:bg-orange-50"
+              }`}
+              onClick={() => {
+                if (activeTab === "gelir") {
+                  setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
+                } else if (activeTab === "gider") {
+                  setAddingTaskState({ tableType: "right", type: "airport_run" });
+                } else if (activeTab === "teknik") {
+                  setAddingTaskState({ tableType: null, type: "technical" });
+                }
+                setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+              }}
+            >
+              <Plus className={`w-4 h-4 ${
+                activeTab === "gelir"
+                  ? "text-blue-600"
+                  : activeTab === "gider"
+                    ? "text-amber-600"
+                    : "text-orange-600"
+              }`} />
+              + Yeni İş Ekle
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Task cards */}
       {activeTab !== "sira" && (
