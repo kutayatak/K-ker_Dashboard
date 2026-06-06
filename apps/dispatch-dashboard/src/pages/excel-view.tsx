@@ -551,7 +551,13 @@ export function ExcelView() {
 
     // Resolve hotel name
     const isRight = (task as ExtendedTask).tableType === "right";
-    const hotel = isRight ? (task.dropoffLocation ?? "") : (task.pickupLocation ?? "");
+    const isExtra = task.type === "extra";
+    const isTechnical = task.type === "technical";
+    const hotel = (isExtra || isTechnical)
+      ? (task.pickupLocation ?? "")
+      : isRight
+        ? (task.dropoffLocation ?? "")
+        : (task.pickupLocation ?? "");
 
     setEditForm({
       flightCode: task.flightCode ?? "",
