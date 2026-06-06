@@ -466,9 +466,9 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         const time = utcTime(task.scheduledTime);
         const direction =
           task.type === "airport_run"
-            ? "GELİR"
+            ? "GİDER"
             : task.type === "hotel_pickup"
-              ? "GİDER"
+              ? "GELİR"
               : "EKSTRA";
         const location =
           task.type === "airport_run"
@@ -551,9 +551,9 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     const time = utcTime(task.scheduledTime);
     const direction =
       task.type === "airport_run"
-        ? "GELİR"
+        ? "GİDER"
         : task.type === "hotel_pickup"
-          ? "GİDER"
+          ? "GELİR"
           : "EKSTRA";
     const location =
       task.type === "airport_run" ? task.dropoffLocation : task.pickupLocation;

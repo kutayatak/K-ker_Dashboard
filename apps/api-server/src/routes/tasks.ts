@@ -419,9 +419,9 @@ router.post("/batch-notify", async (req, res) => {
       // Direction label based on type
       const direction =
         task.type === "airport_run"
-          ? "GELİR"
+          ? "GİDER"
           : task.type === "hotel_pickup"
-            ? "GİDER"
+            ? "GELİR"
             : "EKSTRA";
       // Main location: hotel name
       const location =
