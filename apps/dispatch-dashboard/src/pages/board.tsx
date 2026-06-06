@@ -52,6 +52,7 @@ import {
   Settings2,
   Trash2,
   Search,
+  History,
 } from "lucide-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
@@ -2125,6 +2126,7 @@ function KmEntryTab({
   // Saved presets states
   const [searchQuery, setSearchQuery] = useState("");
   const [presetKmValues, setPresetKmValues] = useState<Record<number, string>>({});
+  const [isSyncingKm, setIsSyncingKm] = useState(false);
 
   // Query for route presets
   const { data: presets = [], refetch: refetchPresets } = useQuery({
@@ -2135,6 +2137,33 @@ function KmEntryTab({
       return res.json() as Promise<any[]>;
     },
   });
+
+  const handleFetchKmFromHistory = async () => {
+    if (isSyncingKm) return;
+    setIsSyncingKm(true);
+    try {
+      const res = await fetch("/api/route-presets/learn-from-history", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        throw new Error("Geçmişten KM verisi çekme işlemi başarısız oldu.");
+      }
+      const data = await res.json();
+      alert(
+        `Geçmiş veriler başarıyla analiz edildi!\n` +
+        `- Yeni oluşturulan rota preset'i: ${data.created}\n` +
+        `- Güncellenen rota preset'i: ${data.updated}\n\n` +
+        `Eşleşen tüm bekleyen görevlerin KM değerleri otomatik güncellendi.`
+      );
+      refetchPresets();
+      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Bir hata oluştu.");
+    } finally {
+      setIsSyncingKm(false);
+    }
+  };
 
   // Mutation to update route presets
   const updatePresetMutation = useMutation({
@@ -2246,6 +2275,15 @@ function KmEntryTab({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            onClick={handleFetchKmFromHistory}
+            disabled={isSyncingKm}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 shadow-xs border-none transition-colors"
+          >
+            <History className="w-3.5 h-3.5 mr-1.5" />
+            {isSyncingKm ? "KM Çekiliyor..." : "Geçmişten KM Çek"}
+          </Button>
           <Badge
             variant="outline"
             className="text-emerald-700 border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:text-emerald-300 dark:border-emerald-800"

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, routePresetsTable, tasksTable } from "@workspace/db";
-import { eq, or, and, sql } from "drizzle-orm";
+import { eq, or, and, sql, gte, isNull, isNotNull } from "drizzle-orm";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -83,6 +83,145 @@ router.patch("/:id", async (req, res) => {
   }
 
   return res.json(preset);
+});
+
+// POST /route-presets/learn-from-history
+router.post("/learn-from-history", async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString().split("T")[0]; // YYYY-MM-DD
+
+    // 1. Fetch tasks from the last 30 days that have km > 0
+    const tasks = await db
+      .select({
+        pickupLocation: tasksTable.pickupLocation,
+        dropoffLocation: tasksTable.dropoffLocation,
+        km: tasksTable.km,
+      })
+      .from(tasksTable)
+      .where(
+        and(
+          or(
+            gte(tasksTable.shiftDate, dateStr),
+            and(
+              isNull(tasksTable.shiftDate),
+              gte(tasksTable.scheduledTime, thirtyDaysAgo)
+            )
+          ),
+          isNotNull(tasksTable.km),
+          sql`${tasksTable.km}::numeric > 0`
+        )
+      );
+
+    // 2. Group tasks by route and count frequency of KM values
+    const routes = new Map<string, { pickup: string; dropoff: string; kmCounts: Map<number, number> }>();
+    for (const t of tasks) {
+      const pickup = (t.pickupLocation || "").trim();
+      const dropoff = (t.dropoffLocation || "").trim();
+      if (!pickup || !dropoff) continue;
+
+      const pNorm = pickup.toLowerCase();
+      const dNorm = dropoff.toLowerCase();
+      const routeKey = pNorm < dNorm ? `${pNorm}|||${dNorm}` : `${dNorm}|||${pNorm}`;
+
+      if (!routes.has(routeKey)) {
+        routes.set(routeKey, {
+          pickup: pNorm < dNorm ? pickup : dropoff,
+          dropoff: pNorm < dNorm ? dropoff : pickup,
+          kmCounts: new Map<number, number>(),
+        });
+      }
+      const route = routes.get(routeKey)!;
+      const kmNum = Number(t.km);
+      if (!isNaN(kmNum) && kmNum > 0) {
+        route.kmCounts.set(kmNum, (route.kmCounts.get(kmNum) || 0) + 1);
+      }
+    }
+
+    // 3. Fetch existing presets to avoid duplicate insertions
+    const existingPresets = await db.select().from(routePresetsTable);
+    const presetMap = new Map<string, any>();
+    for (const p of existingPresets) {
+      const pNorm = p.pickupLocation.trim().toLowerCase();
+      const dNorm = p.dropoffLocation.trim().toLowerCase();
+      const routeKey = pNorm < dNorm ? `${pNorm}|||${dNorm}` : `${dNorm}|||${pNorm}`;
+      presetMap.set(routeKey, p);
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    await db.transaction(async (tx) => {
+      // 4. For each route, find the most common KM and insert or update preset
+      for (const [routeKey, route] of routes.entries()) {
+        let bestKm = 0;
+        let maxCount = 0;
+        for (const [kmVal, count] of route.kmCounts.entries()) {
+          if (count > maxCount) {
+            maxCount = count;
+            bestKm = kmVal;
+          }
+        }
+
+        if (bestKm <= 0) continue;
+        const bestKmStr = String(bestKm);
+
+        const existing = presetMap.get(routeKey);
+        if (existing) {
+          // Update preset if KM changed
+          if (existing.km !== bestKmStr) {
+            await tx
+              .update(routePresetsTable)
+              .set({ km: bestKmStr })
+              .where(eq(routePresetsTable.id, existing.id));
+            updatedCount++;
+          }
+        } else {
+          // Create new preset
+          await tx.insert(routePresetsTable).values({
+            pickupLocation: route.pickup,
+            dropoffLocation: route.dropoff,
+            km: bestKmStr,
+          });
+          createdCount++;
+        }
+      }
+
+      // 5. Propagate the presets to tasks missing KMs
+      const allPresets = await tx.select().from(routePresetsTable);
+      for (const preset of allPresets) {
+        const pickup = preset.pickupLocation.trim();
+        const dropoff = preset.dropoffLocation.trim();
+        await tx
+          .update(tasksTable)
+          .set({ km: preset.km })
+          .where(
+            and(
+              or(
+                and(
+                  eq(sql`lower(trim(${tasksTable.pickupLocation}))`, pickup.toLowerCase()),
+                  eq(sql`lower(trim(${tasksTable.dropoffLocation}))`, dropoff.toLowerCase())
+                ),
+                and(
+                  eq(sql`lower(trim(${tasksTable.pickupLocation}))`, dropoff.toLowerCase()),
+                  eq(sql`lower(trim(${tasksTable.dropoffLocation}))`, pickup.toLowerCase())
+                )
+              ),
+              or(
+                isNull(tasksTable.km),
+                eq(tasksTable.km, "0")
+              )
+            )
+          );
+      }
+    });
+
+    return res.json({ ok: true, created: createdCount, updated: updatedCount });
+  } catch (err: any) {
+    console.error("[route-presets/learn] error:", err);
+    return res.status(500).json({ error: "Failed to learn KMs from history", details: err?.message ?? String(err) });
+  }
 });
 
 // DELETE /route-presets/:id
