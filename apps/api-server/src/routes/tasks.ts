@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tasksTable, vehiclesTable, accountingTable, routePresetsTable } from "@workspace/db";
-import { eq, and, sql, inArray, or } from "drizzle-orm";
+import { eq, and, sql, inArray, or, notInArray, isNull, isNotNull, gte, lt } from "drizzle-orm";
 import {
   ListTasksQueryParams,
   CreateTaskBody,
@@ -244,37 +244,37 @@ router.post("/import", async (req, res) => {
           await tx
             .delete(tasksTable)
             .where(
-              sql`
-                (
-                  ${tasksTable.shiftDate} = ${excelDate}
-                  OR (
-                    ${tasksTable.shiftDate} IS NULL
-                    AND ${tasksTable.scheduledTime} >= ${shiftStart}
-                    AND ${tasksTable.scheduledTime} < ${shiftEnd}
+              and(
+                or(
+                  eq(tasksTable.shiftDate, excelDate),
+                  and(
+                    isNull(tasksTable.shiftDate),
+                    gte(tasksTable.scheduledTime, shiftStart),
+                    lt(tasksTable.scheduledTime, shiftEnd)
                   )
-                )
-                AND ${tasksTable.importKey} IS NOT NULL
-                AND NOT (${tasksTable.importKey} = ANY(${importKeys}))
-                AND ${tasksTable.status} = 'draft'
-              `,
+                ),
+                isNotNull(tasksTable.importKey),
+                notInArray(tasksTable.importKey, importKeys),
+                eq(tasksTable.status, "draft")
+              )
             );
         } else {
           // If import list is empty, delete all drafts for that day
           await tx
             .delete(tasksTable)
             .where(
-              sql`
-                (
-                  ${tasksTable.shiftDate} = ${excelDate}
-                  OR (
-                    ${tasksTable.shiftDate} IS NULL
-                    AND ${tasksTable.scheduledTime} >= ${shiftStart}
-                    AND ${tasksTable.scheduledTime} < ${shiftEnd}
+              and(
+                or(
+                  eq(tasksTable.shiftDate, excelDate),
+                  and(
+                    isNull(tasksTable.shiftDate),
+                    gte(tasksTable.scheduledTime, shiftStart),
+                    lt(tasksTable.scheduledTime, shiftEnd)
                   )
-                )
-                AND ${tasksTable.importKey} IS NOT NULL
-                AND ${tasksTable.status} = 'draft'
-              `,
+                ),
+                isNotNull(tasksTable.importKey),
+                eq(tasksTable.status, "draft")
+              )
             );
         }
       }
