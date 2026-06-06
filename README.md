@@ -1,6 +1,6 @@
-# 🚀 K-ker Dispatcher Dashboard
+# 🚀 Koker Dispatcher Dashboard
 
-K-ker Dashboard; lojistik sevkiyat planlaması, gerçek zamanlı araç koordinasyonu, çift yönlü akıllı Excel entegrasyonu, taktil mobil arayüz tasarımı ve gelişmiş finansal/operasyonel raporlama süreçlerini uçtan uca yönetmek amacıyla geliştirilmiş, **monorepo** mimarisine sahip üst düzey bir kurumsal yönetim platformudur.
+Koker Dashboard; lojistik sevkiyat planlaması, gerçek zamanlı araç koordinasyonu, çift yönlü akıllı Excel entegrasyonu, taktil mobil arayüz tasarımı ve gelişmiş finansal/operasyonel raporlama süreçlerini uçtan uca yönetmek amacıyla geliştirilmiş, **monorepo** mimarisine sahip üst düzey bir kurumsal yönetim platformudur.
 
 Platform, yüksek trafikli operasyonlarda dispatcher'ların işlerini kolaylaştırmak ve sıfır hata ile sevkiyat yönetimi yapabilmelerini sağlamak için modern web teknolojileri ve premium UI/UX prensipleriyle tasarlanmıştır.
 
