@@ -107,9 +107,19 @@ export function ExtraReview() {
     return { name: "Plakasız / Diğer", plate: "—", driver: "Belirtilmedi" };
   };
 
-  // Filter for Extra Tasks only
+  // Filter for Extra Tasks only, excluding blacklisted terms (VİP, AJET, YOLCU, İPTAL)
   const extraTasks = useMemo(() => {
-    return tasks.filter((t) => t.type === "extra");
+    return tasks.filter((t) => {
+      if (t.type !== "extra") return false;
+
+      const combined = `${t.pickupLocation || ""} ${t.dropoffLocation || ""} ${t.notes || ""} ${t.flightCode || ""}`.toLowerCase();
+      const normalized = combined
+        .replace(/i̇/g, "i") // combining dot i
+        .replace(/ı/g, "i");  // dotless ı
+
+      const blacklist = ["vip", "ajet", "yolcu", "iptal"];
+      return !blacklist.some((word) => normalized.includes(word));
+    });
   }, [tasks]);
 
   // Extract available months from extra tasks for the filter dropdown
@@ -150,13 +160,9 @@ export function ExtraReview() {
       "Tarih",
       "Saat",
       "Araç / Plaka",
-      "Sürücü",
       "Nereden",
       "Nereye (Yön)",
       "Özel Notlar",
-      "KM",
-      "Ücret (TL)",
-      "Durum",
     ];
     const rows = filteredExtraTasks.map((t) => {
       const rv = resolveVehicle(t);
@@ -164,21 +170,9 @@ export function ExtraReview() {
         t.scheduledTime.substring(0, 10),
         utcTime(t.scheduledTime),
         rv.plate || "Atanmadı",
-        rv.driver || "Belirtilmedi",
         t.pickupLocation,
         t.dropoffLocation,
         t.notes || "",
-        (t as any).km || "-",
-        t.fee || "-",
-        t.status === "draft"
-          ? "Taslak"
-          : t.status === "assigned"
-            ? "Bildirildi"
-            : t.status === "in_progress"
-              ? "Yolda"
-              : t.status === "completed"
-                ? "Tamamlandı"
-                : "İptal",
       ];
     });
 
@@ -303,25 +297,22 @@ export function ExtraReview() {
                   <TableHead className="w-[120px] font-bold text-xs uppercase text-muted-foreground">Tarih</TableHead>
                   <TableHead className="w-[80px] font-bold text-xs uppercase text-muted-foreground">Saat</TableHead>
                   <TableHead className="w-[120px] font-bold text-xs uppercase text-muted-foreground">Araç / Plaka</TableHead>
-                  <TableHead className="w-[140px] font-bold text-xs uppercase text-muted-foreground">Sürücü</TableHead>
                   <TableHead className="font-bold text-xs uppercase text-muted-foreground">Nereden</TableHead>
                   <TableHead className="w-[130px] font-bold text-xs uppercase text-muted-foreground">Nereye (Yön)</TableHead>
                   <TableHead className="font-bold text-xs uppercase text-muted-foreground">Özel Notlar</TableHead>
-                  <TableHead className="w-[90px] font-bold text-xs uppercase text-muted-foreground">KM / Ücret</TableHead>
-                  <TableHead className="w-[110px] font-bold text-xs uppercase text-muted-foreground">Durum</TableHead>
                   <TableHead className="w-[200px] text-right font-bold text-xs uppercase text-muted-foreground">İşlemler</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tasksPending ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-xs font-semibold">
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-xs font-semibold">
                       Görevler yükleniyor...
                     </TableCell>
                   </TableRow>
                 ) : filteredExtraTasks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-12 text-muted-foreground text-sm">
+                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
                       Kriterlere uygun ekstra iş kaydı bulunamadı.
                     </TableCell>
                   </TableRow>
@@ -351,13 +342,6 @@ export function ExtraReview() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="font-medium text-foreground text-xs">
-                          {rv.driver !== "Belirtilmedi" ? rv.driver : (
-                            <span className="text-muted-foreground italic font-normal text-[11px]">
-                              Belirtilmedi
-                            </span>
-                          )}
-                        </TableCell>
                         <TableCell
                           className="font-semibold text-foreground text-xs max-w-[160px] truncate"
                           title={t.pickupLocation}
@@ -377,39 +361,6 @@ export function ExtraReview() {
                           title={t.notes || ""}
                         >
                           {t.notes || "-"}
-                        </TableCell>
-                        <TableCell className="text-xs font-semibold text-foreground">
-                          <div className="flex flex-col gap-0.5 font-mono">
-                            <span className="text-muted-foreground text-[10px]">{(t as any).km ? `${(t as any).km} KM` : "- KM"}</span>
-                            <span>{t.fee ? `${Number(t.fee).toLocaleString("tr-TR")} ₺` : "- ₺"}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          {t.status === "draft" && (
-                            <Badge className="bg-slate-100 hover:bg-slate-100 border border-slate-300 text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 text-[10px] font-bold">
-                              Taslak
-                            </Badge>
-                          )}
-                          {t.status === "assigned" && (
-                            <Badge className="bg-blue-50 hover:bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-400 text-[10px] font-bold">
-                              Bildirildi
-                            </Badge>
-                          )}
-                          {t.status === "in_progress" && (
-                            <Badge className="bg-amber-50 hover:bg-amber-50 border border-amber-200 text-amber-700 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-400 text-[10px] font-bold">
-                              Yolda
-                            </Badge>
-                          )}
-                          {t.status === "completed" && (
-                            <Badge className="bg-emerald-50 hover:bg-emerald-50 border border-emerald-200 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-900 dark:text-emerald-400 text-[10px] font-bold">
-                              Tamamlandı
-                            </Badge>
-                          )}
-                          {t.status === "cancelled" && (
-                            <Badge className="bg-rose-50 hover:bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950 dark:border-rose-900 dark:text-rose-400 text-[10px] font-bold">
-                              İptal
-                            </Badge>
-                          )}
                         </TableCell>
                         <TableCell className="text-xs text-right">
                           <div className="flex gap-2 items-center justify-end">
@@ -466,33 +417,6 @@ export function ExtraReview() {
                       <Calendar className="w-3 h-3 text-muted-foreground" />
                       {format(new Date(t.scheduledTime), "dd MMM yyyy", { locale: tr })} &bull; <strong className="text-primary">{utcTime(t.scheduledTime)}</strong>
                     </span>
-                    <div>
-                      {t.status === "draft" && (
-                        <Badge className="bg-slate-100 border border-slate-300 text-slate-700 text-[9px] font-bold px-1.5 py-0.2">
-                          Taslak
-                        </Badge>
-                      )}
-                      {t.status === "assigned" && (
-                        <Badge className="bg-blue-50 border border-blue-200 text-blue-700 text-[9px] font-bold px-1.5 py-0.2">
-                          Bildirildi
-                        </Badge>
-                      )}
-                      {t.status === "in_progress" && (
-                        <Badge className="bg-amber-50 border border-amber-200 text-amber-700 text-[9px] font-bold px-1.5 py-0.2">
-                          Yolda
-                        </Badge>
-                      )}
-                      {t.status === "completed" && (
-                        <Badge className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] font-bold px-1.5 py-0.2">
-                          Tamamlandı
-                        </Badge>
-                      )}
-                      {t.status === "cancelled" && (
-                        <Badge className="bg-rose-50 border border-rose-200 text-rose-700 text-[9px] font-bold px-1.5 py-0.2">
-                          İptal
-                        </Badge>
-                      )}
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs">
@@ -503,12 +427,9 @@ export function ExtraReview() {
                     </div>
 
                     <div>
-                      <span className="text-[10px] text-muted-foreground block">Araç & Sürücü:</span>
+                      <span className="text-[10px] text-muted-foreground block">Araç / Plaka:</span>
                       <span className="font-bold text-primary block">
                         {rv.plate !== "—" ? formatDisplayPlate(rv.plate) : "Atanmadı"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground block truncate">
-                        {rv.driver !== "Belirtilmedi" ? rv.driver : "Sürücü Yok"}
                       </span>
                     </div>
 
@@ -519,13 +440,8 @@ export function ExtraReview() {
                       </div>
                     )}
 
-                    <div className="col-span-2 flex justify-between items-center border-t border-dashed pt-2 mt-1">
-                      <div className="font-mono text-xs flex gap-3 text-foreground font-semibold">
-                        <span>{(t as any).km ? `${(t as any).km} KM` : "- KM"}</span>
-                        <span>{t.fee ? `${Number(t.fee).toLocaleString("tr-TR")} ₺` : "- ₺"}</span>
-                      </div>
-                      
-                      <div className="flex gap-1">
+                    <div className="col-span-2 flex justify-end items-center border-t border-dashed pt-2 mt-1">
+                      <div className="flex gap-2">
                         <button
                           onClick={() => setRetypeTask({ ...t, techDest })}
                           className="inline-flex items-center gap-0.5 px-2 py-1 rounded text-[10px] font-bold border border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:border-blue-800 dark:text-blue-400"
