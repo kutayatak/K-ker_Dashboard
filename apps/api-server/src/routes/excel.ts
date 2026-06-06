@@ -51,25 +51,43 @@ router.post("/upload", async (req: any, res: any) => {
     // Strip data URL prefix if accidentally included (e.g. "data:...;base64,")
     const cleanData = data.includes(",") ? data.split(",")[1] : data;
 
-    // Check if an existing record exists under either format (legacy DDMMYY or new YYYY-MM-DD)
+    // Check if existing records exist under either format (legacy DDMMYY or new YYYY-MM-DD)
     const files = await db
       .select({ id: excelFilesTable.id, date: excelFilesTable.date })
       .from(excelFilesTable)
-      .where(inArray(excelFilesTable.date, [normalizedDate, legacyDMY]))
-      .limit(1);
-    const existing = files[0];
+      .where(inArray(excelFilesTable.date, [normalizedDate, legacyDMY]));
 
-    if (existing) {
-      // Update existing record (whether stored as DDMMYY or YYYY-MM-DD)
+    const canonicalFile = files.find((f) => f.date === normalizedDate);
+    const legacyFile = files.find((f) => f.date === legacyDMY);
+
+    if (canonicalFile) {
+      // If we already have a canonical record, update it.
       await db
         .update(excelFilesTable)
         .set({
-          date: normalizedDate, // Migrate to canonical YYYY-MM-DD format
           filename: filename ?? "import.xlsx",
           data: cleanData,
           uploadedAt: new Date(),
         })
-        .where(eq(excelFilesTable.id, existing.id));
+        .where(eq(excelFilesTable.id, canonicalFile.id));
+
+      // If we also had a legacy record, delete it so we don't have duplicate/stale records
+      if (legacyFile) {
+        await db
+          .delete(excelFilesTable)
+          .where(eq(excelFilesTable.id, legacyFile.id));
+      }
+    } else if (legacyFile) {
+      // If we only have a legacy record, update its date to canonical format and save new data
+      await db
+        .update(excelFilesTable)
+        .set({
+          date: normalizedDate, // Safe because normalizedDate does not exist in the DB (canonicalFile is null)
+          filename: filename ?? "import.xlsx",
+          data: cleanData,
+          uploadedAt: new Date(),
+        })
+        .where(eq(excelFilesTable.id, legacyFile.id));
     } else {
       // Insert new record using canonical YYYY-MM-DD format
       await db.insert(excelFilesTable).values({
@@ -273,16 +291,24 @@ router.get("/download", async (req: any, res: any) => {
 // GET /excel/files
 // Returns a list of all stored Excel files
 router.get("/files", async (req, res) => {
-  const files = await db
-    .select({
-      id: excelFilesTable.id,
-      date: excelFilesTable.date,
-      filename: excelFilesTable.filename,
-      uploadedAt: excelFilesTable.uploadedAt,
-    })
-    .from(excelFilesTable)
-    .orderBy(sql`${excelFilesTable.uploadedAt} DESC`);
-  return res.json(files);
+  try {
+    const files = await db
+      .select({
+        id: excelFilesTable.id,
+        date: excelFilesTable.date,
+        filename: excelFilesTable.filename,
+        uploadedAt: excelFilesTable.uploadedAt,
+      })
+      .from(excelFilesTable)
+      .orderBy(sql`${excelFilesTable.uploadedAt} DESC`);
+    return res.json(files);
+  } catch (err: any) {
+    console.error("[excel/files] error:", err);
+    return res.status(500).json({
+      error: "Yüklü dosyalar listelenirken bir hata oluştu.",
+      detail: err?.message ?? String(err),
+    });
+  }
 });
 
 // DELETE /excel/files/:id
