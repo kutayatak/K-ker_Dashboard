@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, excelFilesTable, tasksTable, vehiclesTable } from "@workspace/db";
+import { db, excelFilesTable, tasksTable, vehiclesTable, routePresetsTable } from "@workspace/db";
 import { eq, sql, inArray, and } from "drizzle-orm";
 import ExcelJS from "exceljs";
 
@@ -100,13 +100,35 @@ router.post("/upload", async (req: any, res: any) => {
     return res.json({ ok: true });
   } catch (err: any) {
     console.error("[excel/upload] error:", err);
-    (globalThis as any).lastUploadError = {
+    const errorData = {
       timestamp: new Date().toISOString(),
       message: err?.message ?? String(err),
       stack: err?.stack,
       name: err?.name,
       code: err?.code,
+      context: "upload"
     };
+    (globalThis as any).lastUploadError = errorData;
+
+    db.select()
+      .from(routePresetsTable)
+      .where(eq(routePresetsTable.pickupLocation, "__last_error_log__"))
+      .limit(1)
+      .then((existingList) => {
+        const existing = existingList[0];
+        if (existing) {
+          return db
+            .update(routePresetsTable)
+            .set({ dropoffLocation: JSON.stringify(errorData), km: "0.0" })
+            .where(eq(routePresetsTable.id, existing.id));
+        } else {
+          return db
+            .insert(routePresetsTable)
+            .values({ pickupLocation: "__last_error_log__", dropoffLocation: JSON.stringify(errorData), km: "0.0" });
+        }
+      })
+      .catch(() => {});
+
     return res.status(500).json({
       error: "Excel dosyası kaydedilirken bir hata oluştu.",
       detail: err?.message ?? String(err),
@@ -429,7 +451,19 @@ router.get("/db-diagnostic", async (req: any, res: any) => {
     lastGlobalError: (globalThis as any).lastGlobalError ?? null,
     lastUploadError: (globalThis as any).lastUploadError ?? null,
     lastImportError: (globalThis as any).lastImportError ?? null,
+    lastDbErrorLog: null,
   };
+
+  try {
+    const [log] = await db
+      .select()
+      .from(routePresetsTable)
+      .where(eq(routePresetsTable.pickupLocation, "__last_error_log__"))
+      .limit(1);
+    report.lastDbErrorLog = log ? JSON.parse(log.dropoffLocation) : null;
+  } catch (err: any) {
+    report.lastDbErrorLog = { error: "Failed to read diagnostic error log from DB", message: err.message };
+  }
 
   try {
     const start = Date.now();

@@ -452,13 +452,35 @@ router.post("/import", async (req, res) => {
     });
   } catch (err: any) {
     console.error("[tasks/import] error:", err);
-    (globalThis as any).lastImportError = {
+    const errorData = {
       timestamp: new Date().toISOString(),
       message: err?.message ?? String(err),
       stack: err?.stack,
       name: err?.name,
       code: err?.code,
+      context: "import"
     };
+    (globalThis as any).lastImportError = errorData;
+
+    db.select()
+      .from(routePresetsTable)
+      .where(eq(routePresetsTable.pickupLocation, "__last_error_log__"))
+      .limit(1)
+      .then((existingList) => {
+        const existing = existingList[0];
+        if (existing) {
+          return db
+            .update(routePresetsTable)
+            .set({ dropoffLocation: JSON.stringify(errorData), km: "0.0" })
+            .where(eq(routePresetsTable.id, existing.id));
+        } else {
+          return db
+            .insert(routePresetsTable)
+            .values({ pickupLocation: "__last_error_log__", dropoffLocation: JSON.stringify(errorData), km: "0.0" });
+        }
+      })
+      .catch(() => {});
+
     return res.status(500).json({
       error: "Görevler içe aktarılırken bir hata oluştu.",
       detail: err?.message ?? String(err),
