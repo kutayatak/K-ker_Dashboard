@@ -11,6 +11,7 @@ import {
   useUpdateVehicle,
   useUpdateTask,
   useDeleteTask,
+  useCreateTask,
 } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ import {
   Car,
   ExternalLink,
   Plus,
+  X,
   GripVertical,
   MoreVertical,
   CheckCircle2,
@@ -141,6 +143,82 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+
+  const createTaskMutation = useCreateTask();
+  const [addingTaskState, setAddingTaskState] = useState<{
+    tableType: "left" | "right" | null;
+    type: "hotel_pickup" | "airport_run" | "extra" | "technical";
+  } | null>(null);
+  const [addForm, setAddForm] = useState({
+    flightCode: "",
+    time: "09:00",
+    notes: "",
+    km: "",
+    hotelName: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const handleAddSave = async () => {
+    if (!addingTaskState) return;
+    setEditSaving(true);
+    try {
+      const [hh, mm] = addForm.time.split(":").map(Number);
+      const scheduledTime = `${selectedDate}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}:00.000Z`;
+
+      const isRight = addingTaskState.tableType === "right";
+      const isTechnical = addingTaskState.type === "technical";
+      const isExtra = addingTaskState.type === "extra";
+
+      let pickupLoc = "";
+      let dropoffLoc = "";
+
+      if (isTechnical) {
+        pickupLoc = addForm.hotelName.trim() || "Teknik İş";
+        dropoffLoc = "Teknik İş";
+      } else if (isExtra) {
+        pickupLoc = addForm.hotelName.trim() || "Ekstra İş";
+        dropoffLoc = isRight ? "Ekstra Gider" : "Ekstra Gelir";
+      } else if (isRight) {
+        pickupLoc = "Esenboğa Havalimanı";
+        dropoffLoc = addForm.hotelName.trim() || "Otel";
+      } else {
+        pickupLoc = addForm.hotelName.trim() || "Otel";
+        dropoffLoc = "Esenboğa Havalimanı";
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        createTaskMutation.mutate(
+          {
+            data: {
+              type: addingTaskState.type,
+              flightCode: addForm.flightCode.trim() || undefined,
+              pickupLocation: pickupLoc,
+              dropoffLocation: dropoffLoc,
+              scheduledTime,
+              passengerCount: 1,
+              notes: addForm.notes.trim() || undefined,
+              km: addForm.km === "" ? null : Number(addForm.km),
+              tableType: addingTaskState.tableType,
+            },
+          },
+          {
+            onSuccess: () => {
+              queryClient.invalidateQueries({
+                queryKey: getListTasksQueryKey(),
+              });
+              resolve();
+            },
+            onError: (err) => reject(err),
+          },
+        );
+      });
+      setAddingTaskState(null);
+    } catch (e) {
+      console.error("Create task failed:", e);
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   useEffect(() => {
     setLocalQueue(queue);
@@ -1045,52 +1123,124 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
             </div>
           )}
           {activeTab === "gelir" && (
-            <MobileTaskList
-              tasks={gelirTasks}
-              selectable
-              selectedIds={selectedTasks}
-              onSelect={handleSelectTask}
-              onNotifySingle={handleNotifySingle}
-              onComplete={handleComplete}
-              onCancel={handleCancel}
-              onEdit={handleOpenEdit}
-              onUpdateNotify={handleUpdateNotify}
-              onDropAssign={handleDropAssign}
-              onAssignSingle={handleOpenAssignSingle}
-              pendingUpdateIds={pendingUpdateIds}
-            />
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 font-bold border-blue-200 text-blue-700 bg-blue-50/10 hover:bg-blue-50 gap-1 rounded shadow-xs"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: "left", type: "hotel_pickup" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  + Normal Ekle
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 font-bold border-emerald-200 text-emerald-700 bg-emerald-50/10 hover:bg-emerald-50 gap-1 rounded shadow-xs"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: "left", type: "extra" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  + Ekstra Ekle
+                </Button>
+              </div>
+              <MobileTaskList
+                tasks={gelirTasks}
+                selectable
+                selectedIds={selectedTasks}
+                onSelect={handleSelectTask}
+                onNotifySingle={handleNotifySingle}
+                onComplete={handleComplete}
+                onCancel={handleCancel}
+                onEdit={handleOpenEdit}
+                onUpdateNotify={handleUpdateNotify}
+                onDropAssign={handleDropAssign}
+                onAssignSingle={handleOpenAssignSingle}
+                pendingUpdateIds={pendingUpdateIds}
+              />
+            </div>
           )}
           {activeTab === "gider" && (
-            <MobileTaskList
-              tasks={giderTasks}
-              selectable
-              selectedIds={selectedTasks}
-              onSelect={handleSelectTask}
-              onNotifySingle={handleNotifySingle}
-              onComplete={handleComplete}
-              onCancel={handleCancel}
-              onEdit={handleOpenEdit}
-              onUpdateNotify={handleUpdateNotify}
-              onDropAssign={handleDropAssign}
-              onAssignSingle={handleOpenAssignSingle}
-              pendingUpdateIds={pendingUpdateIds}
-            />
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 font-bold border-amber-200 text-amber-700 bg-amber-50/10 hover:bg-amber-50 gap-1 rounded shadow-xs"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: "right", type: "airport_run" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-amber-600" />
+                  + Normal Ekle
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 font-bold border-emerald-200 text-emerald-700 bg-emerald-50/10 hover:bg-emerald-50 gap-1 rounded shadow-xs"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: "right", type: "extra" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-emerald-600" />
+                  + Ekstra Ekle
+                </Button>
+              </div>
+              <MobileTaskList
+                tasks={giderTasks}
+                selectable
+                selectedIds={selectedTasks}
+                onSelect={handleSelectTask}
+                onNotifySingle={handleNotifySingle}
+                onComplete={handleComplete}
+                onCancel={handleCancel}
+                onEdit={handleOpenEdit}
+                onUpdateNotify={handleUpdateNotify}
+                onDropAssign={handleDropAssign}
+                onAssignSingle={handleOpenAssignSingle}
+                pendingUpdateIds={pendingUpdateIds}
+              />
+            </div>
           )}
           {activeTab === "technical" && (
-            <MobileTaskList
-              tasks={technicalTasks}
-              selectable
-              selectedIds={selectedTasks}
-              onSelect={handleSelectTask}
-              onNotifySingle={handleNotifySingle}
-              onComplete={handleComplete}
-              onCancel={handleCancel}
-              onEdit={handleOpenEdit}
-              onUpdateNotify={handleUpdateNotify}
-              onDropAssign={handleDropAssign}
-              onAssignSingle={handleOpenAssignSingle}
-              pendingUpdateIds={pendingUpdateIds}
-            />
+            <div className="flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-9 font-bold border-orange-200 text-orange-700 bg-orange-50/10 hover:bg-orange-50 gap-1 rounded shadow-xs"
+                  onClick={() => {
+                    setAddingTaskState({ tableType: null, type: "technical" });
+                    setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-orange-600" />
+                  + Teknik İş Ekle
+                </Button>
+              </div>
+              <MobileTaskList
+                tasks={technicalTasks}
+                selectable
+                selectedIds={selectedTasks}
+                onSelect={handleSelectTask}
+                onNotifySingle={handleNotifySingle}
+                onComplete={handleComplete}
+                onCancel={handleCancel}
+                onEdit={handleOpenEdit}
+                onUpdateNotify={handleUpdateNotify}
+                onDropAssign={handleDropAssign}
+                onAssignSingle={handleOpenAssignSingle}
+                pendingUpdateIds={pendingUpdateIds}
+              />
+            </div>
           )}
           {activeTab === "completed" && (
             <MobileTaskList
@@ -1463,6 +1613,146 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Task creation modal ───────────────────────────────────────── */}
+      {addingTaskState && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setAddingTaskState(null);
+          }}
+        >
+          <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4 mx-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base flex items-center gap-2">
+                <Plus className="w-4 h-4 text-primary" />
+                {addingTaskState.type === "extra" ? "Ekstra İş Ekle" : "Yeni İş Ekle"}
+              </h2>
+              <button
+                onClick={() => setAddingTaskState(null)}
+                className="w-7 h-7 rounded hover:bg-muted flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    UÇUŞ KODU
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
+                    value={addForm.flightCode}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
+                    }
+                    placeholder="Örn: TK123"
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  {addingTaskState.type === "technical"
+                    ? "TEKNİK AÇIKLAMA"
+                    : addingTaskState.type === "extra"
+                      ? "AÇIKLAMA"
+                      : "OTEL ADI"}
+                </label>
+                <input
+                  type="text"
+                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.hotelName}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, hotelName: e.target.value }))
+                  }
+                  placeholder={
+                    addingTaskState.type === "technical"
+                      ? "Örn: Araç Bakımı"
+                      : addingTaskState.type === "extra"
+                        ? "Örn: Ekstra Sefer Açıklaması"
+                        : "Örn: Rixos"
+                  }
+                />
+              </div>
+
+              <div className={`flex flex-col gap-1 ${addingTaskState.type === "extra" ? "col-span-2" : ""}`}>
+                <label className="text-xs font-semibold text-muted-foreground">
+                  SAAT (UTC)
+                </label>
+                <input
+                  type="time"
+                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  value={addForm.time}
+                  onChange={(e) =>
+                    setAddForm((f) => ({ ...f, time: e.target.value }))
+                  }
+                />
+              </div>
+
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    KM
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={addForm.km}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, km: e.target.value }))
+                    }
+                    placeholder="KM"
+                  />
+                </div>
+              )}
+
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    EKİP / NOTLAR
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={addForm.notes}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    placeholder="Örn: 2CPT 1KBN"
+                  />
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-muted-foreground">
+              💡 Eklenen iş, girilen saate göre otomatik olarak diğer işlerin arasına sıralanacaktır.
+            </p>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAddingTaskState(null)}
+              >
+                İptal
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAddSave}
+                disabled={editSaving}
+                className="gap-1.5"
+              >
+                {editSaving ? "Kaydediliyor..." : "Kaydet"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
