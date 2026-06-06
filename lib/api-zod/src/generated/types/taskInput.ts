@@ -25,4 +25,6 @@ export interface TaskInput {
   rowIndex?: number | null;
   /** @nullable */
   tableType?: string | null;
+  /** @nullable */
+  shiftDate?: string | null;
 }

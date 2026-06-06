@@ -161,6 +161,7 @@ export const ListTasksResponseItem = zod.object({
   "driverName": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "fee": zod.number().nullish(),
+  "shiftDate": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const ListTasksResponse = zod.array(ListTasksResponseItem)
@@ -232,7 +233,8 @@ export const ImportTasksBody = zod.object({
   "km": zod.union([zod.number(),zod.string()]).nullish(),
   "importKey": zod.string().nullish(),
   "rowIndex": zod.number().nullish(),
-  "tableType": zod.string().nullish()
+  "tableType": zod.string().nullish(),
+  "shiftDate": zod.string().nullish()
 })),
   "excelBase64": zod.string().nullish(),
   "excelDate": zod.string().nullish(),
@@ -258,6 +260,7 @@ export const ImportTasksResponse = zod.object({
   "driverName": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "fee": zod.number().nullish(),
+  "shiftDate": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })).optional()
 })
@@ -299,6 +302,7 @@ export const GetTaskResponse = zod.object({
   "driverName": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "fee": zod.number().nullish(),
+  "shiftDate": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })
 
@@ -342,6 +346,7 @@ export const UpdateTaskResponse = zod.object({
   "driverName": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "fee": zod.number().nullish(),
+  "shiftDate": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })
 

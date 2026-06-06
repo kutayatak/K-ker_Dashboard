@@ -531,6 +531,8 @@ components:
           type: ["string", "null"]
         fee:
           type: ["number", "null"]
+        shiftDate:
+          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time
@@ -566,6 +568,8 @@ components:
         rowIndex:
           type: ["integer", "null"]
         tableType:
+          type: ["string", "null"]
+        shiftDate:
           type: ["string", "null"]
 
     TaskUpdate:

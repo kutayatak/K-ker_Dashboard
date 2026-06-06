@@ -199,6 +199,7 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
               notes: addForm.notes.trim() || undefined,
               km: addForm.km === "" ? null : Number(addForm.km),
               tableType: addingTaskState.tableType,
+              shiftDate: selectedDate,
             },
           },
           {

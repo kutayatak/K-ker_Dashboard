@@ -32,5 +32,7 @@ export interface Task {
   notes?: string | null;
   /** @nullable */
   fee?: number | null;
+  /** @nullable */
+  shiftDate?: string | null;
   createdAt: Date;
 }

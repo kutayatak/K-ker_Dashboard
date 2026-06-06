@@ -541,6 +541,62 @@ router.get("/debug-tasks", async (req, res) => {
   }
 });
 
+// GET /excel/tasks-for-date?date=YYYY-MM-DD
+// Returns all tasks for a given date including shiftDate, rowIndex — for debugging download issues
+router.get("/tasks-for-date", async (req: any, res: any) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Forbidden in production" });
+  }
+  const date = req.query.date as string;
+  if (!date) return res.status(400).json({ error: "date query param required (YYYY-MM-DD)" });
+
+  const requestedYMD = normalizeToYMD(date);
+  const [y, m, d] = requestedYMD.split("-").map(Number);
+  const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+  const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0));
+
+  try {
+    const tasks = await db
+      .select({
+        id: tasksTable.id,
+        type: tasksTable.type,
+        shiftDate: tasksTable.shiftDate,
+        rowIndex: tasksTable.rowIndex,
+        tableType: tasksTable.tableType,
+        scheduledTime: tasksTable.scheduledTime,
+        status: tasksTable.status,
+        pickupLocation: tasksTable.pickupLocation,
+        flightCode: tasksTable.flightCode,
+      })
+      .from(tasksTable)
+      .where(
+        sql`
+          ${tasksTable.shiftDate} = ${requestedYMD}
+          OR (
+            ${tasksTable.shiftDate} IS NULL
+            AND ${tasksTable.scheduledTime} >= ${shiftStart}
+            AND ${tasksTable.scheduledTime} < ${shiftEnd}
+          )
+        `,
+      )
+      .orderBy(sql`${tasksTable.id} DESC`);
+
+    return res.json({
+      requestedYMD,
+      shiftStart,
+      shiftEnd,
+      totalFound: tasks.length,
+      withRowIndex: tasks.filter(t => t.rowIndex != null).length,
+      withoutRowIndex: tasks.filter(t => t.rowIndex == null).length,
+      tasks,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to fetch tasks for date", details: err.message });
+  }
+});
+
+
+
 // GET /excel/db-diagnostic
 // Runs diagnostics on DB connection and tables, returning detailed errors (including stacks)
 router.get("/db-diagnostic", async (req: any, res: any) => {

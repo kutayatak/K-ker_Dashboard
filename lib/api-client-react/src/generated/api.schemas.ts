@@ -127,6 +127,8 @@ export interface Task {
   notes?: string | null;
   /** @nullable */
   fee?: number | null;
+  /** @nullable */
+  shiftDate?: string | null;
   createdAt: string;
 }
 
@@ -158,6 +160,8 @@ export interface TaskInput {
   rowIndex?: number | null;
   /** @nullable */
   tableType?: string | null;
+  /** @nullable */
+  shiftDate?: string | null;
 }
 
 export type TaskUpdateType = typeof TaskUpdateType[keyof typeof TaskUpdateType];
