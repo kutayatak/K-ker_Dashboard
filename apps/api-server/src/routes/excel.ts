@@ -334,7 +334,21 @@ function appendManualTasks(
     (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime(),
   );
 
-  let lastRow = ws.rowCount + 2; // leave a blank separator
+  // Find the actual last row with content (to skip empty formatted rows at the bottom of templates)
+  let lastContentRow = 0;
+  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    let hasValue = false;
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cell.value !== null && cell.value !== undefined && String(cell.value).trim() !== "") {
+        hasValue = true;
+      }
+    });
+    if (hasValue) {
+      lastContentRow = Math.max(lastContentRow, rowNumber);
+    }
+  });
+
+  let lastRow = lastContentRow > 0 ? lastContentRow + 2 : 1;
 
   // Section header
   const headerRow = ws.getRow(lastRow);
