@@ -137,7 +137,14 @@ router.get("/download", async (req: any, res: any) => {
       })
       .from(tasksTable)
       .where(
-        sql`${tasksTable.scheduledTime} >= ${shiftStart} AND ${tasksTable.scheduledTime} < ${shiftEnd}`,
+        sql`
+          ${tasksTable.shiftDate} = ${requestedYMD}
+          OR (
+            ${tasksTable.shiftDate} IS NULL
+            AND ${tasksTable.scheduledTime} >= ${shiftStart}
+            AND ${tasksTable.scheduledTime} < ${shiftEnd}
+          )
+        `,
       );
 
     // Load vehicle plates in a single batch query to avoid N+1 issue
