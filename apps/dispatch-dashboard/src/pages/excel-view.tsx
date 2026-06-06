@@ -1176,24 +1176,30 @@ export function ExcelView() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  UÇUŞ KODU
-                </label>
-                <input
-                  type="text"
-                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
-                  value={editForm.flightCode}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
-                  }
-                  placeholder="Örn: TK123"
-                />
-              </div>
+              {editingTask.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    UÇUŞ KODU
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
+                    value={editForm.flightCode}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
+                    }
+                    placeholder="Örn: TK123"
+                  />
+                </div>
+              )}
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-xs font-semibold text-muted-foreground">
-                  {editingTask.type === "technical" ? "TEKNİK AÇIKLAMA" : "OTEL ADI"}
+                  {editingTask.type === "technical"
+                    ? "TEKNİK AÇIKLAMA"
+                    : editingTask.type === "extra"
+                      ? "AÇIKLAMA"
+                      : "OTEL ADI"}
                 </label>
                 <input
                   type="text"
@@ -1202,11 +1208,17 @@ export function ExcelView() {
                   onChange={(e) =>
                     setEditForm((f) => ({ ...f, hotelName: e.target.value }))
                   }
-                  placeholder={editingTask.type === "technical" ? "Örn: Araç Bakımı" : "Örn: Rixos"}
+                  placeholder={
+                    editingTask.type === "technical"
+                      ? "Örn: Araç Bakımı"
+                      : editingTask.type === "extra"
+                        ? "Örn: Ekstra Sefer Açıklaması"
+                        : "Örn: Rixos"
+                  }
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className={`flex flex-col gap-1 ${editingTask.type === "extra" ? "col-span-2" : ""}`}>
                 <label className="text-xs font-semibold text-muted-foreground">
                   SAAT (UTC)
                 </label>
@@ -1220,36 +1232,40 @@ export function ExcelView() {
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  KM
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  value={editForm.km}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, km: e.target.value }))
-                  }
-                  placeholder="KM"
-                />
-              </div>
+              {editingTask.type !== "extra" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    KM
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={editForm.km}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, km: e.target.value }))
+                    }
+                    placeholder="KM"
+                  />
+                </div>
+              )}
 
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  EKİP / NOTLAR
-                </label>
-                <input
-                  type="text"
-                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  value={editForm.notes}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  placeholder="Örn: 2CPT 1KBN"
-                />
-              </div>
+              {editingTask.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    EKİP / NOTLAR
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={editForm.notes}
+                    onChange={(e) =>
+                      setEditForm((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    placeholder="Örn: 2CPT 1KBN"
+                  />
+                </div>
+              )}
             </div>
 
             <p className="text-[11px] text-muted-foreground">
@@ -1307,24 +1323,30 @@ export function ExcelView() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  UÇUŞ KODU
-                </label>
-                <input
-                  type="text"
-                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
-                  value={addForm.flightCode}
-                  onChange={(e) =>
-                    setAddForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
-                  }
-                  placeholder="Örn: TK123"
-                />
-              </div>
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    UÇUŞ KODU
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40 uppercase"
+                    value={addForm.flightCode}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, flightCode: e.target.value.toUpperCase() }))
+                    }
+                    placeholder="Örn: TK123"
+                  />
+                </div>
+              )}
 
               <div className="flex flex-col gap-1 col-span-2">
                 <label className="text-xs font-semibold text-muted-foreground">
-                  {addingTaskState.type === "technical" ? "TEKNİK AÇIKLAMA" : "OTEL ADI"}
+                  {addingTaskState.type === "technical"
+                    ? "TEKNİK AÇIKLAMA"
+                    : addingTaskState.type === "extra"
+                      ? "AÇIKLAMA"
+                      : "OTEL ADI"}
                 </label>
                 <input
                   type="text"
@@ -1333,11 +1355,17 @@ export function ExcelView() {
                   onChange={(e) =>
                     setAddForm((f) => ({ ...f, hotelName: e.target.value }))
                   }
-                  placeholder={addingTaskState.type === "technical" ? "Örn: Araç Bakımı" : "Örn: Rixos"}
+                  placeholder={
+                    addingTaskState.type === "technical"
+                      ? "Örn: Araç Bakımı"
+                      : addingTaskState.type === "extra"
+                        ? "Örn: Ekstra Sefer Açıklaması"
+                        : "Örn: Rixos"
+                  }
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
+              <div className={`flex flex-col gap-1 ${addingTaskState.type === "extra" ? "col-span-2" : ""}`}>
                 <label className="text-xs font-semibold text-muted-foreground">
                   SAAT (UTC)
                 </label>
@@ -1351,36 +1379,40 @@ export function ExcelView() {
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  KM
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  value={addForm.km}
-                  onChange={(e) =>
-                    setAddForm((f) => ({ ...f, km: e.target.value }))
-                  }
-                  placeholder="KM"
-                />
-              </div>
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    KM
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="border rounded px-2 py-1.5 text-sm font-mono bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={addForm.km}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, km: e.target.value }))
+                    }
+                    placeholder="KM"
+                  />
+                </div>
+              )}
 
-              <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  EKİP / NOTLAR
-                </label>
-                <input
-                  type="text"
-                  className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
-                  value={addForm.notes}
-                  onChange={(e) =>
-                    setAddForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  placeholder="Örn: 2CPT 1KBN"
-                />
-              </div>
+              {addingTaskState.type !== "extra" && (
+                <div className="flex flex-col gap-1 col-span-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    EKİP / NOTLAR
+                  </label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={addForm.notes}
+                    onChange={(e) =>
+                      setAddForm((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    placeholder="Örn: 2CPT 1KBN"
+                  />
+                </div>
+              )}
             </div>
 
             <p className="text-[11px] text-muted-foreground">
