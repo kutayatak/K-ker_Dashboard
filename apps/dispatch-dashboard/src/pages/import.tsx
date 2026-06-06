@@ -185,13 +185,7 @@ function getTimeMinutes(rawVal: any): number | null {
 // Parse passenger count from strings like "2CPT", "1KBN", "3CPT+1KBN", "1 CPT"
 // Ignores numbers >= 10 to avoid parsing flight codes (e.g. 3001, 2189) or room numbers
 function parsePassengerCount(text: any): number {
-  if (!text) return 1;
-  const s = String(text).replace(/\s/g, "");
-  const nums = s.match(/\d+/g);
-  if (!nums) return 1;
-  const validNums = nums.map((n) => parseInt(n, 10)).filter((num) => num < 10);
-  if (validNums.length === 0) return 1;
-  return validNums.reduce((acc, n) => acc + n, 0);
+  return 1;
 }
 
 // Check if value is system XML artifact or empty
@@ -404,7 +398,7 @@ function buildEkstraTask(
 // Split task into 10-person chunks
 function splitTask(task: any): any[] {
   if (!task) return [];
-  if (task.passengerCount <= 10) return [task];
+  if (task.type === "extra" || task.type === "technical" || task.passengerCount <= 10) return [task];
 
   const result: any[] = [];
   let remaining = task.passengerCount;

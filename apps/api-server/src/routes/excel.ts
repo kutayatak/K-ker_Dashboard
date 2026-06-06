@@ -5,6 +5,17 @@ import ExcelJS from "exceljs";
 
 const router = Router();
 
+
+const simplifyPlate = (plateStr: string): string => {
+  let clean = plateStr.trim();
+  const suffixMatch = clean.match(/^(.*?)\s*\(?(V[1-3])\)?$/i);
+  if (suffixMatch) {
+    clean = suffixMatch[1].trim();
+  }
+  clean = clean.replace(/^\d+\s*/, "");
+  return clean;
+};
+
 // Helper to convert YYYY-MM-DD to DDMMYY
 const formatToDDMMYY = (dateStr: string): string => {
   if (!dateStr || !dateStr.includes("-")) return dateStr;
@@ -231,6 +242,7 @@ router.get("/download", async (req: any, res: any) => {
 
           if (task.status === "cancelled") {
             cellPlate.value = "İPTAL";
+            cellKm.value = 0;
           } else {
             let plate = "";
             if (task.vehicleId) {
@@ -239,11 +251,11 @@ router.get("/download", async (req: any, res: any) => {
               plate = getPlateFromNotes(task.notes);
             }
             if (plate) {
-              cellPlate.value = plate;
+              cellPlate.value = simplifyPlate(plate);
             }
-          }
-          if (task.km) {
-            cellKm.value = Number(task.km);
+            if (task.km) {
+              cellKm.value = Number(task.km);
+            }
           }
 
           // Apply yellow background to technical tasks if possible
@@ -264,6 +276,7 @@ router.get("/download", async (req: any, res: any) => {
 
           if (task.status === "cancelled") {
             cellPlate.value = "İPTAL";
+            cellKm.value = 0;
           } else {
             let plate = "";
             if (task.vehicleId) {
@@ -272,11 +285,11 @@ router.get("/download", async (req: any, res: any) => {
               plate = getPlateFromNotes(task.notes);
             }
             if (plate) {
-              cellPlate.value = plate;
+              cellPlate.value = simplifyPlate(plate);
             }
-          }
-          if (task.km) {
-            cellKm.value = Number(task.km);
+            if (task.km) {
+              cellKm.value = Number(task.km);
+            }
           }
 
           // Apply yellow background to technical tasks if possible

@@ -342,7 +342,9 @@ router.post("/import", async (req, res) => {
 
           // Auto-fill KM from route preset if not provided (direction-independent)
           let km = t.km != null ? String(t.km) : null;
-          if (!km) {
+          if (isImportCancelled) {
+            km = "0";
+          } else if (!km) {
             const pickupNormalized = (t.pickupLocation ?? "").trim().toLowerCase();
             const dropoffNormalized = (t.dropoffLocation ?? "").trim().toLowerCase();
             if (pickupNormalized && dropoffNormalized) {
@@ -370,6 +372,10 @@ router.post("/import", async (req, res) => {
             if (existing.status !== "draft") {
               finalStatus = existing.status;
               finalVehicleId = existing.vehicleId;
+            }
+
+            if (finalStatus === "cancelled") {
+              km = "0";
             }
 
             const updateValues = {
@@ -783,6 +789,9 @@ router.patch("/:id", async (req, res) => {
     updateData.actualDropoffTime = new Date(parsed.data.actualDropoffTime);
   if (parsed.data.fee != null) updateData.fee = String(parsed.data.fee);
   if (parsed.data.km != null) updateData.km = String(parsed.data.km);
+  if (parsed.data.status === "cancelled") {
+    updateData.km = "0";
+  }
 
   const [task] = await db
     .update(tasksTable)

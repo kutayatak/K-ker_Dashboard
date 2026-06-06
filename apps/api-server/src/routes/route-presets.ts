@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, routePresetsTable, tasksTable } from "@workspace/db";
-import { eq, or, and, sql, gte, isNull, isNotNull } from "drizzle-orm";
+import { eq, or, and, sql, gte, isNull, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -110,7 +110,8 @@ router.post("/learn-from-history", async (req, res) => {
             )
           ),
           isNotNull(tasksTable.km),
-          sql`${tasksTable.km}::numeric > 0`
+          sql`${tasksTable.km}::numeric > 0`,
+          ne(tasksTable.status, "cancelled")
         )
       );
 

@@ -53,14 +53,28 @@ import {
   Trash2,
   Search,
   History,
+  Copy,
 } from "lucide-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 
+
+import { useToast } from "@/hooks/use-toast";
+
 // Read HH:mm directly from the UTC ISO string to avoid local-timezone offset.
 const utcTime = (iso: string) => iso?.substring(11, 16) ?? "--:--";
+
+const simplifyPlate = (plateStr: string): string => {
+  let clean = plateStr.trim();
+  const suffixMatch = clean.match(/^(.*?)\s*\(?(V[1-3])\)?$/i);
+  if (suffixMatch) {
+    clean = suffixMatch[1].trim();
+  }
+  clean = clean.replace(/^\d+\s*/, "");
+  return clean;
+};
 import {
   Popover,
   PopoverContent,
@@ -109,8 +123,21 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
   );
   const updateVehicleMutation = useUpdateVehicle();
 
+  const sortedVehiclesForSelection = useMemo(() => {
+    const queueIds = new Set(queue.map((q: any) => q.id));
+    const inQueue = queue.map((q: any, idx: number) => {
+      const full = vehicles.find((v: any) => v.id === q.id);
+      return full
+        ? { ...full, inQueue: true, queueIndex: idx + 1 }
+        : { ...q, inQueue: true, queueIndex: idx + 1 };
+    });
+    const notInQueue = vehicles.filter((v: any) => !queueIds.has(v.id));
+    return [...inQueue, ...notInQueue];
+  }, [vehicles, queue]);
+
   const [localQueue, setLocalQueue] = useState<any[]>([]);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
@@ -125,21 +152,40 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
+    if (draggedIndex === null) return;
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (index: number) => {
+    if (draggedIndex === null || draggedIndex === index) {
+      setDragOverIndex(null);
+      setDraggedIndex(null);
+      return;
+    }
 
     const items = [...localQueue];
     const draggedItem = items[draggedIndex];
     items.splice(draggedIndex, 1);
     items.splice(index, 0, draggedItem);
 
-    setDraggedIndex(index);
     setLocalQueue(items);
+    setDragOverIndex(null);
+    setDraggedIndex(null);
+
+    saveReorderedQueue(items);
   };
 
-  const handleDragEnd = async () => {
+  const handleDragEnd = () => {
     setDraggedIndex(null);
-    const ids = localQueue.map((v) => v.id);
+    setDragOverIndex(null);
+  };
 
+  const saveReorderedQueue = async (reorderedQueue: any[]) => {
+    const ids = reorderedQueue.map((v) => v.id);
     try {
       const res = await fetch("/api/vehicles/queue/reorder", {
         method: "POST",
@@ -393,12 +439,12 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
       let finalNotes = cleanNotes;
       if (selectedVehicle) {
         finalNotes = cleanNotes
-          ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
-          : `Plaka: ${selectedVehicle.plate}`;
+          ? `${cleanNotes} | Plaka: ${simplifyPlate(selectedVehicle.plate)}`
+          : `Plaka: ${simplifyPlate(selectedVehicle.plate)}`;
       } else if (customPlateText.trim()) {
         finalNotes = cleanNotes
-          ? `${cleanNotes} | Plaka: ${customPlateText.trim()}`
-          : `Plaka: ${customPlateText.trim()}`;
+          ? `${cleanNotes} | Plaka: ${simplifyPlate(customPlateText.trim())}`
+          : `Plaka: ${simplifyPlate(customPlateText.trim())}`;
       }
 
       return new Promise<void>((resolve, reject) => {
@@ -490,9 +536,9 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         window.open(makeWaUrl(vehicle.phone, message), "_blank");
       }
     }
-    // Soft-cancel task by setting status to cancelled and clearing vehicleId
+    // Soft-cancel task by setting status to cancelled, clearing vehicleId, and setting km to 0
     updateTaskMutation.mutate(
-      { id: task.id, data: { status: "cancelled", vehicleId: null } },
+      { id: task.id, data: { status: "cancelled", vehicleId: null, km: 0 } },
       {
         onSuccess: () =>
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() }),
@@ -785,14 +831,6 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
             <span className="hidden md:inline ml-1">Kontrol Et</span>
           </Button>
 
-          <Button
-            size="sm"
-            className="h-7 px-2 text-xs ml-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-            onClick={handleDownloadExcel}
-          >
-            <Download className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden md:inline">İndir</span>
-          </Button>
         </div>
       </div>
 
@@ -876,8 +914,12 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
           <div className="flex-1 overflow-y-auto space-y-2 pb-4 pr-1">
             <QueueList
               queue={localQueue}
+              draggedIndex={draggedIndex}
+              dragOverIndex={dragOverIndex}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
               onDragEnd={handleDragEnd}
               onRemove={handleRemoveFromQueue}
             />
@@ -982,8 +1024,12 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
               </div>
               <QueueList
                 queue={localQueue}
+                draggedIndex={draggedIndex}
+                dragOverIndex={dragOverIndex}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 onDragEnd={handleDragEnd}
                 onRemove={handleRemoveFromQueue}
               />
@@ -1176,9 +1222,9 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
                 }}
               >
                 <option value="">Şoför / Araç Seçin...</option>
-                {vehicles.map((v: any) => (
+                {sortedVehiclesForSelection.map((v: any) => (
                   <option key={v.id} value={v.id}>
-                    {v.plate} — {v.driverName} ({v.name}){" "}
+                    {v.inQueue ? `[Sıra ${v.queueIndex}] ` : ""}{v.plate} — {v.driverName} ({v.name}){" "}
                     {v.type === "outsource" ? "[ESNAF]" : ""}
                   </option>
                 ))}
@@ -1416,82 +1462,109 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
 /* ── Queue list (shared between desktop sidebar and mobile tab) ─────────── */
 function QueueList({
   queue,
+  draggedIndex,
+  dragOverIndex,
   onDragStart,
   onDragOver,
+  onDragLeave,
+  onDrop,
   onDragEnd,
   onRemove,
 }: {
   queue: any[];
+  draggedIndex: number | null;
+  dragOverIndex: number | null;
   onDragStart: (index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragLeave: () => void;
+  onDrop: (index: number) => void;
   onDragEnd: () => void;
   onRemove: (id: number) => void;
 }) {
   if (!queue.length) return null;
   return (
     <div className="space-y-2 select-none">
-      {queue.map((v, idx) => (
-        <div
-          key={v.id}
-          draggable
-          onDragStart={(e) => {
-            onDragStart(idx);
-            e.dataTransfer.setData("text/vehicle-id", String(v.id));
-            e.dataTransfer.setData(
-              "text/vehicle-name",
-              `${v.plate} — ${v.driverName}`,
-            );
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          onDragOver={(e) => onDragOver(e, idx)}
-          onDragEnd={onDragEnd}
-          className={`rounded-lg p-3 text-sm border cursor-grab active:cursor-grabbing transition-all duration-150 flex flex-col gap-1.5 relative group/qitem hover:border-primary/40 ${
-            v.type === "outsource"
-              ? "border-dashed border-amber-300 bg-amber-50/40"
-              : "border bg-card hover:bg-muted/10"
-          }`}
-        >
-          {/* Grab handle and content */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <GripVertical className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0 cursor-grab" />
-              <span className="font-mono text-xs tracking-wide truncate font-bold text-foreground">
-                {v.plate}
-              </span>
-            </div>
+      {queue.map((v, idx) => {
+        const showIndicatorAbove =
+          dragOverIndex === idx && draggedIndex !== null && idx < draggedIndex;
+        const showIndicatorBelow =
+          dragOverIndex === idx && draggedIndex !== null && idx > draggedIndex;
 
-            <div className="flex items-center gap-1 shrink-0">
-              <Badge
-                variant="secondary"
-                className="font-mono bg-blue-100 text-blue-800 text-[10px] px-1 py-0 rounded shrink-0 font-extrabold"
-              >
-                #{idx + 1}
-              </Badge>
+        return (
+          <div key={v.id}>
+            {showIndicatorAbove && (
+              <div className="h-1 bg-primary rounded my-1 shadow-sm shadow-primary/30 transition-all animate-pulse" />
+            )}
+            <div
+              draggable
+              onDragStart={(e) => {
+                onDragStart(idx);
+                e.dataTransfer.setData("text/vehicle-id", String(v.id));
+                e.dataTransfer.setData(
+                  "text/vehicle-name",
+                  `${v.plate} — ${v.driverName}`,
+                );
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => onDragOver(e, idx)}
+              onDragLeave={onDragLeave}
+              onDrop={(e) => {
+                e.preventDefault();
+                onDrop(idx);
+              }}
+              onDragEnd={onDragEnd}
+              className={`rounded-lg p-3 text-sm border cursor-grab active:cursor-grabbing transition-all duration-150 flex flex-col gap-1.5 relative group/qitem hover:border-primary/40 ${
+                v.type === "outsource"
+                  ? "border-dashed border-amber-300 bg-amber-50/40"
+                  : "border bg-card hover:bg-muted/10"
+              }`}
+            >
+              {/* Grab handle and content */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <GripVertical className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0 cursor-grab" />
+                  <span className="font-mono text-xs tracking-wide truncate font-bold text-foreground">
+                    {v.plate}
+                  </span>
+                </div>
 
-              {/* Manual Remove from Queue */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemove(v.id);
-                }}
-                className="w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 flex items-center justify-center opacity-0 group-hover/qitem:opacity-100 transition-opacity"
-                title="Kuyruktan Çıkar"
-              >
-                <Plus className="w-3.5 h-3.5 rotate-45 text-red-500" />
-              </button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Badge
+                    variant="secondary"
+                    className="font-mono bg-blue-100 text-blue-800 text-[10px] px-1 py-0 rounded shrink-0 font-extrabold"
+                  >
+                    #{idx + 1}
+                  </Badge>
+
+                  {/* Manual Remove from Queue */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove(v.id);
+                    }}
+                    className="w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 flex items-center justify-center opacity-0 group-hover/qitem:opacity-100 transition-opacity"
+                    title="Kuyruktan Çıkar"
+                  >
+                    <Plus className="w-3.5 h-3.5 rotate-45 text-red-500" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground pl-5 truncate font-medium">
+                {v.name} &bull; {v.driverName}
+              </div>
+              {v.type === "outsource" && (
+                <div className="text-[9px] text-amber-700 font-extrabold mt-0.5 pl-5 uppercase tracking-wider">
+                  Esnaf
+                </div>
+              )}
             </div>
+            {showIndicatorBelow && (
+              <div className="h-1 bg-primary rounded my-1 shadow-sm shadow-primary/30 transition-all animate-pulse" />
+            )}
           </div>
-
-          <div className="text-xs text-muted-foreground pl-5 truncate font-medium">
-            {v.name} &bull; {v.driverName}
-          </div>
-          {v.type === "outsource" && (
-            <div className="text-[9px] text-amber-700 font-extrabold mt-0.5 pl-5 uppercase tracking-wider">
-              Esnaf
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1711,7 +1784,7 @@ function TaskCard({
     (task.notes.includes("Rötar") || task.notes.toLowerCase().includes("delay"));
 
   const isAssignedButNotNotified = !!task.vehicleId && task.status === "draft";
-  const isNotified = task.status === "assigned";
+  const isNotified = task.status === "assigned" || task.status === "completed";
 
   // Extract plate from notes as a fallback if vehicleName is not set
   const getPlateFromNotes = (notes: string | null | undefined) => {
@@ -1720,6 +1793,69 @@ function TaskCard({
     return match ? match[1].trim() : null;
   };
   const displayName = task.vehicleName || getPlateFromNotes(task.notes);
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const updateTaskMutation = useUpdateTask();
+
+  const { data: vehicles = [] } = useQuery<any[]>({
+    queryKey: ["/api/vehicles"],
+  });
+
+  const getWaUrl = (phone: string, message: string) => {
+    let cleanPhone = phone.replace(/\D/g, "");
+    if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
+    if (cleanPhone.length === 10) cleanPhone = "90" + cleanPhone;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+  };
+
+  const getTaskMessageText = () => {
+    const time = utcTime(task.scheduledTime);
+    const direction =
+      task.type === "airport_run"
+        ? "GİDER"
+        : task.type === "hotel_pickup"
+          ? "GELİR"
+          : "EKSTRA";
+    const location =
+      task.type === "airport_run"
+        ? task.dropoffLocation
+        : task.pickupLocation;
+    const crew = task.notes
+      ? task.notes.includes(" | Plaka:")
+        ? task.notes.split(" | Plaka:")[0]
+        : task.notes.includes(" | İPTAL")
+          ? task.notes.split(" | İPTAL")[0]
+          : task.notes === "İPTAL"
+            ? ""
+            : task.notes
+      : "";
+    const parts = [task.flightCode, time, location, crew, direction].filter(Boolean);
+    return parts.join("   ");
+  };
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const msg = getTaskMessageText();
+    navigator.clipboard.writeText(msg).then(() => {
+      toast({
+        title: "Kopyalandı",
+        description: "WhatsApp mesaj metni panoya kopyalandı.",
+      });
+      if (task.status === "draft") {
+        updateTaskMutation.mutate({
+          id: task.id,
+          data: { status: "completed" },
+        }, {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          }
+        });
+      }
+    }).catch(err => {
+      console.error("Copy failed: ", err);
+    });
+  };
 
   // Colour coding for completed column
   const isGelirType =
@@ -1995,77 +2131,131 @@ function TaskCard({
           </div>
         )}
 
-        {/* Notification Status & Single Action (active tasks only) */}
-        {task.status !== "completed" &&
-          (task.vehicleId ? (
-            <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
-              {isNotified ? (
-                <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
-                  <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">
-                    ✓
-                  </span>
-                  Bildirildi
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
-                  <span className="w-3.5 h-3.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px]"></span>
-                  Bildirilmedi
-                </span>
-              )}
+        {/* Notification Status & Single Action (non-cancelled tasks only) */}
+        {task.status !== "cancelled" && (() => {
+          const customPlateVal = getPlateFromNotes(task.notes);
+          const isCustomPlate = !task.vehicleId && !!customPlateVal;
+          const hasRealVehicle = !!task.vehicleId;
 
-              <div className="flex items-center gap-1">
-                {/* Güncelleme Bildir — shows when task was edited after being notified */}
-                {hasPendingUpdate && onUpdateNotify && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2 text-[10px] bg-amber-500 text-white hover:bg-amber-600 border-none"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUpdateNotify();
-                    }}
-                  >
-                    <Send className="w-2.5 h-2.5 mr-1" />
-                    Güncelleme Bildir
-                  </Button>
+          if (hasRealVehicle) {
+            return (
+              <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+                {isNotified ? (
+                  <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
+                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">
+                      ✓
+                    </span>
+                    Bildirildi
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
+                    <span className="w-3.5 h-3.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px]"></span>
+                    Bildirilmedi
+                  </span>
                 )}
-                {/* Bildir — for unnotified assigned tasks */}
-                {!isNotified && !hasPendingUpdate && onNotifySingle && (
+
+                <div className="flex items-center gap-1">
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-6 px-2 text-[10px] bg-primary text-primary-foreground hover:bg-primary/95 border-none"
+                    className="h-6 px-2 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                    onClick={handleCopy}
+                  >
+                    <Copy className="w-2.5 h-2.5 mr-1" />
+                    Kopyala
+                  </Button>
+                  {hasPendingUpdate && onUpdateNotify ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[10px] bg-amber-500 text-white hover:bg-amber-600 border-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUpdateNotify();
+                      }}
+                    >
+                      <Send className="w-2.5 h-2.5 mr-1" />
+                      Güncelleme Bildir
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[10px] bg-primary text-primary-foreground hover:bg-primary/95 border-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (task.status === "draft" && onNotifySingle) {
+                          onNotifySingle();
+                        } else {
+                          const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
+                          if (vehicle) {
+                            const msg = getTaskMessageText();
+                            window.open(getWaUrl(vehicle.phone, msg), "_blank");
+                          }
+                        }
+                      }}
+                    >
+                      <Send className="w-2.5 h-2.5 mr-1" />
+                      Bildir
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          } else if (isCustomPlate) {
+            return (
+              <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+                {task.status === "completed" ? (
+                  <span className="flex items-center gap-1 text-emerald-600 font-semibold select-none">
+                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] text-emerald-600">
+                      ✓
+                    </span>
+                    Kopyalandı
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-slate-500 font-semibold select-none">
+                    <span className="w-3.5 h-3.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[10px]"></span>
+                    Kopyalanmadı
+                  </span>
+                )}
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700"
+                    onClick={handleCopy}
+                  >
+                    <Copy className="w-2.5 h-2.5 mr-1" />
+                    Kopyala
+                  </Button>
+                </div>
+              </div>
+            );
+          } else {
+            return (
+              <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground italic select-none">
+                  Araç atanmadı
+                </span>
+                {onAssignSingle && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2.5 text-[10px] border-dashed border-primary/40 hover:border-primary text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onNotifySingle();
+                      onAssignSingle();
                     }}
                   >
-                    Bildir
+                    <Car className="w-2.5 h-2.5 mr-1" />
+                    Araç Seç
                   </Button>
                 )}
               </div>
-            </div>
-          ) : (
-            <div className="mt-2.5 pt-2 border-t flex items-center justify-between text-[11px]">
-              <span className="text-muted-foreground italic select-none">
-                Araç atanmadı
-              </span>
-              {onAssignSingle && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-6 px-2.5 text-[10px] border-dashed border-primary/40 hover:border-primary text-primary bg-primary/5 hover:bg-primary/10 transition-colors shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAssignSingle();
-                  }}
-                >
-                  <Car className="w-2.5 h-2.5 mr-1" />
-                  Araç Seç
-                </Button>
-              )}
-            </div>
-          ))}
+            );
+          }
+        })()}
       </div>
 
       {/* Status stripe */}

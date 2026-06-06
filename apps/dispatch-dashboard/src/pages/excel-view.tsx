@@ -28,12 +28,27 @@ import {
   ChevronUp,
   Pencil,
   Save,
+  Copy,
+  Send,
+  Car,
 } from "lucide-react";
 import { format } from "date-fns";
+
+import { useToast } from "@/hooks/use-toast";
 
 // Read HH:mm directly from the UTC ISO string to avoid local-timezone offset.
 // date-fns format() uses local time; in Turkey (UTC+3) it would add 3 hours.
 const utcTime = (iso: string) => iso?.substring(11, 16) ?? "--:--";
+
+const simplifyPlate = (plateStr: string): string => {
+  let clean = plateStr.trim();
+  const suffixMatch = clean.match(/^(.*?)\s*\(?(V[1-3])\)?$/i);
+  if (suffixMatch) {
+    clean = suffixMatch[1].trim();
+  }
+  clean = clean.replace(/^\d+\s*/, "");
+  return clean;
+};
 import { tr } from "date-fns/locale";
 import {
   Popover,
@@ -85,6 +100,7 @@ const DEFAULT_TECHNICAL_WIDTHS = [
 ];
 
 export function ExcelView() {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -234,6 +250,18 @@ export function ExcelView() {
     query: { queryKey: ["/api/vehicles/queue"] },
   });
 
+  const sortedVehiclesForSelection = useMemo(() => {
+    const queueIds = new Set(queue.map((q: any) => q.id));
+    const inQueue = queue.map((q: any, idx: number) => {
+      const full = vehicles.find((v: any) => v.id === q.id);
+      return full
+        ? { ...full, inQueue: true, queueIndex: idx + 1 }
+        : { ...q, inQueue: true, queueIndex: idx + 1 };
+    });
+    const notInQueue = vehicles.filter((v: any) => !queueIds.has(v.id));
+    return [...inQueue, ...notInQueue];
+  }, [vehicles, queue]);
+
   const updateTaskMutation = useUpdateTask();
   const createTaskMutation = useCreateTask();
   const updateVehicleMutation = useUpdateVehicle();
@@ -241,9 +269,8 @@ export function ExcelView() {
 
   // ── Queue state & drag-and-drop (reorder within queue) ─────────────────
   const [localQueue, setLocalQueue] = useState<any[]>([]);
-  const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(
-    null,
-  );
+  const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
+  const [dragOverQueueIndex, setDragOverQueueIndex] = useState<number | null>(null);
   const [isAddQueueOpen, setIsAddQueueOpen] = useState(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [queueCollapsed, setQueueCollapsed] = useState(false);
@@ -262,18 +289,40 @@ export function ExcelView() {
 
   const handleQueueDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedQueueIndex === null || draggedQueueIndex === index) return;
+    if (draggedQueueIndex === null) return;
+    setDragOverQueueIndex(index);
+  };
+
+  const handleQueueDragLeave = () => {
+    setDragOverQueueIndex(null);
+  };
+
+  const handleQueueDrop = (index: number) => {
+    if (draggedQueueIndex === null || draggedQueueIndex === index) {
+      setDragOverQueueIndex(null);
+      setDraggedQueueIndex(null);
+      return;
+    }
+
     const items = [...localQueue];
     const dragged = items[draggedQueueIndex];
     items.splice(draggedQueueIndex, 1);
     items.splice(index, 0, dragged);
-    setDraggedQueueIndex(index);
+
     setLocalQueue(items);
+    setDragOverQueueIndex(null);
+    setDraggedQueueIndex(null);
+
+    saveReorderedQueue(items);
   };
 
-  const handleQueueDragEnd = async () => {
+  const handleQueueDragEnd = () => {
     setDraggedQueueIndex(null);
-    const ids = localQueue.map((v) => v.id);
+    setDragOverQueueIndex(null);
+  };
+
+  const saveReorderedQueue = async (reorderedQueue: any[]) => {
+    const ids = reorderedQueue.map((v) => v.id);
     try {
       const res = await fetch("/api/vehicles/queue/reorder", {
         method: "POST",
@@ -537,12 +586,16 @@ export function ExcelView() {
       // Update appropriate location fields based on tableType
       const isRight = (editingTask as ExtendedTask).tableType === "right";
       const isTechnical = editingTask.type === "technical";
+      const isExtra = editingTask.type === "extra";
 
       let pickupLoc = editingTask.pickupLocation;
       let dropoffLoc = editingTask.dropoffLocation;
 
       if (isTechnical) {
         pickupLoc = editForm.hotelName.trim() || "Teknik İş";
+      } else if (isExtra) {
+        pickupLoc = editForm.hotelName.trim() || "Ekstra İş";
+        dropoffLoc = isRight ? "Ekstra Gelir" : "Ekstra Gider";
       } else if (isRight) {
         pickupLoc = editingTask.pickupLocation || "Esenboğa Havalimanı";
         dropoffLoc = editForm.hotelName.trim() || "Otel";
@@ -592,6 +645,7 @@ export function ExcelView() {
 
       const isRight = addingTaskState.tableType === "right";
       const isTechnical = addingTaskState.type === "technical";
+      const isExtra = addingTaskState.type === "extra";
 
       let pickupLoc = "";
       let dropoffLoc = "";
@@ -599,6 +653,9 @@ export function ExcelView() {
       if (isTechnical) {
         pickupLoc = addForm.hotelName.trim() || "Teknik İş";
         dropoffLoc = "Teknik İş";
+      } else if (isExtra) {
+        pickupLoc = addForm.hotelName.trim() || "Ekstra İş";
+        dropoffLoc = isRight ? "Ekstra Gelir" : "Ekstra Gider";
       } else if (isRight) {
         pickupLoc = "Esenboğa Havalimanı";
         dropoffLoc = addForm.hotelName.trim() || "Otel";
@@ -659,6 +716,7 @@ export function ExcelView() {
             vehicleId: null,
             notes: finalNotes || null,
             status: "cancelled",
+            km: 0,
           },
         },
         {
@@ -683,8 +741,8 @@ export function ExcelView() {
             : newNotes;
       const finalNotes = customPlate.trim()
         ? cleanNotes
-          ? `${cleanNotes} | Plaka: ${customPlate.trim()}`
-          : `Plaka: ${customPlate.trim()}`
+          ? `${cleanNotes} | Plaka: ${simplifyPlate(customPlate.trim())}`
+          : `Plaka: ${simplifyPlate(customPlate.trim())}`
         : cleanNotes;
       updateTaskMutation.mutate(
         {
@@ -714,8 +772,8 @@ export function ExcelView() {
           : newNotes;
     if (selectedVehicle) {
       newNotes = cleanNotes
-        ? `${cleanNotes} | Plaka: ${selectedVehicle.plate}`
-        : `Plaka: ${selectedVehicle.plate}`;
+        ? `${cleanNotes} | Plaka: ${simplifyPlate(selectedVehicle.plate)}`
+        : `Plaka: ${simplifyPlate(selectedVehicle.plate)}`;
     } else {
       newNotes = cleanNotes;
     }
@@ -793,9 +851,9 @@ export function ExcelView() {
           {getPlateFromNotes(task.notes)}
         </option>
       )}
-      {(vehicles as any[]).map((v) => (
+      {sortedVehiclesForSelection.map((v: any) => (
         <option key={v.id} value={v.id}>
-          {v.plate} — {v.driverName}
+          {v.inQueue ? `[Sıra ${v.queueIndex}] ` : ""}{v.plate} — {v.driverName}
         </option>
       ))}
     </select>
@@ -811,8 +869,73 @@ export function ExcelView() {
   }) => {
     const isExcelCompleted = task.status === "completed";
     const isAssigned = !!task.vehicleId;
-    const isNotified = task.status === "assigned";
+    const isNotified = task.status === "assigned" || task.status === "completed";
     const isDraft = task.status === "draft";
+
+    const getPlateFromNotes = (notes: string | null | undefined) => {
+      if (!notes) return null;
+      const match = notes.match(/Plaka:\s*([^|]+)/i);
+      return match ? match[1].trim() : null;
+    };
+
+    const customPlateVal = getPlateFromNotes(task.notes);
+    const isCustomPlate = !task.vehicleId && !!customPlateVal;
+    const hasRealVehicle = !!task.vehicleId;
+
+    const getWaUrl = (phone: string, message: string) => {
+      let cleanPhone = phone.replace(/\D/g, "");
+      if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
+      if (cleanPhone.length === 10) cleanPhone = "90" + cleanPhone;
+      return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    };
+
+    const getTaskMessageText = () => {
+      const time = utcTime(task.scheduledTime);
+      const direction =
+        task.type === "airport_run"
+          ? "GİDER"
+          : task.type === "hotel_pickup"
+            ? "GELİR"
+            : "EKSTRA";
+      const location =
+        task.type === "airport_run"
+          ? task.dropoffLocation
+          : task.pickupLocation;
+      const crew = task.notes
+        ? task.notes.includes(" | Plaka:")
+          ? task.notes.split(" | Plaka:")[0]
+          : task.notes.includes(" | İPTAL")
+            ? task.notes.split(" | İPTAL")[0]
+            : task.notes === "İPTAL"
+              ? ""
+              : task.notes
+        : "";
+      const parts = [task.flightCode, time, location, crew, direction].filter(Boolean);
+      return parts.join("   ");
+    };
+
+    const handleCopy = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const msg = getTaskMessageText();
+      navigator.clipboard.writeText(msg).then(() => {
+        toast({
+          title: "Kopyalandı",
+          description: "WhatsApp mesaj metni panoya kopyalandı.",
+        });
+        if (task.status === "draft") {
+          updateTaskMutation.mutate({
+            id: task.id,
+            data: { status: "completed" },
+          }, {
+            onSuccess: () => {
+              queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+            }
+          });
+        }
+      }).catch(err => {
+        console.error("Copy failed: ", err);
+      });
+    };
 
     return (
       <td
@@ -836,32 +959,82 @@ export function ExcelView() {
       >
         <div className="flex flex-col gap-1 w-full">
           <PlateSelect task={task} />
-          {isAssigned && !isExcelCompleted && (
-            <div className="flex items-center justify-between px-1 text-[10px] select-none">
-              {isNotified ? (
-                <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
-                  <span className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
-                    ✓
-                  </span>
-                  Bildirildi
-                </span>
-              ) : (
-                <>
-                  <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
-                    Bildirilmedi
-                  </span>
-                  <button
-                    onClick={() => handleNotifySingle(task.id)}
-                    disabled={notifyMutation.isPending}
-                    className="px-1.5 py-0.5 bg-primary text-primary-foreground hover:bg-primary/95 text-[9px] font-bold rounded shadow-xs transition-all"
-                  >
-                    {notifyMutation.isPending ? "..." : "Bildir"}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+          {task.status !== "cancelled" && (() => {
+            if (hasRealVehicle) {
+              return (
+                <div className="flex items-center justify-between px-1 text-[10px] select-none gap-1">
+                  {isNotified ? (
+                    <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
+                      <span className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
+                        ✓
+                      </span>
+                      Bildirildi
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
+                      Bildirilmedi
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleCopy}
+                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-[9px] font-bold rounded shadow-xs transition-all flex items-center"
+                    >
+                      <Copy className="w-2.5 h-2.5 mr-0.5" />
+                      Kopyala
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (task.status === "draft") {
+                          handleNotifySingle(task.id);
+                        } else {
+                          const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
+                          if (vehicle) {
+                            const msg = getTaskMessageText();
+                            window.open(getWaUrl(vehicle.phone, msg), "_blank");
+                          }
+                        }
+                      }}
+                      className="px-1.5 py-0.5 bg-primary text-primary-foreground hover:bg-primary/95 text-[9px] font-bold rounded shadow-xs transition-all flex items-center"
+                    >
+                      <Send className="w-2.5 h-2.5 mr-0.5" />
+                      Bildir
+                    </button>
+                  </div>
+                </div>
+              );
+            } else if (isCustomPlate) {
+              return (
+                <div className="flex items-center justify-between px-1 text-[10px] select-none gap-1">
+                  {task.status === "completed" ? (
+                    <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
+                      <span className="w-3 h-3 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
+                        ✓
+                      </span>
+                      Kopyalandı
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
+                      Kopyalanmadı
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleCopy}
+                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-[9px] font-bold rounded shadow-xs transition-all flex items-center"
+                    >
+                      <Copy className="w-2.5 h-2.5 mr-0.5" />
+                      Kopyala
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       </td>
     );
@@ -1368,47 +1541,66 @@ export function ExcelView() {
                     Sırada araç yok
                   </p>
                 )}
-                {localQueue.map((v: any, idx) => (
-                  <div
-                    key={v.id}
-                    draggable
-                    onDragStart={(e) => {
-                      handleQueueDragStart(idx);
-                      handleVehicleDragStart(e, v.id);
-                    }}
-                    onDragOver={(e) => handleQueueDragOver(e, idx)}
-                    onDragEnd={handleQueueDragEnd}
-                    className={`rounded-md p-2 text-[11px] border cursor-grab active:cursor-grabbing transition-all duration-100 flex flex-col gap-0.5 group relative
-                      ${
-                        v.type === "outsource"
-                          ? "border-dashed border-amber-300 bg-amber-50/40 dark:bg-amber-950/10"
-                          : "border bg-card hover:bg-muted/10"
-                      } ${draggedQueueIndex === idx ? "opacity-40 scale-95" : ""}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <GripVertical className="w-3 h-3 text-muted-foreground/50 shrink-0" />
-                      <Badge
-                        variant="secondary"
-                        className="font-mono bg-blue-100 text-blue-800 text-[9px] px-1 py-0 rounded shrink-0 font-extrabold dark:bg-blue-950 dark:text-blue-300"
+                {localQueue.map((v: any, idx) => {
+                  const showIndicatorAbove =
+                    dragOverQueueIndex === idx && draggedQueueIndex !== null && idx < draggedQueueIndex;
+                  const showIndicatorBelow =
+                    dragOverQueueIndex === idx && draggedQueueIndex !== null && idx > draggedQueueIndex;
+
+                  return (
+                    <div key={v.id}>
+                      {showIndicatorAbove && (
+                        <div className="h-1 bg-primary rounded my-1 shadow-sm shadow-primary/30 transition-all animate-pulse" />
+                      )}
+                      <div
+                        draggable
+                        onDragStart={(e) => {
+                          handleQueueDragStart(idx);
+                          handleVehicleDragStart(e, v.id);
+                        }}
+                        onDragOver={(e) => handleQueueDragOver(e, idx)}
+                        onDragLeave={handleQueueDragLeave}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleQueueDrop(idx);
+                        }}
+                        onDragEnd={handleQueueDragEnd}
+                        className={`rounded-md p-2 text-[11px] border cursor-grab active:cursor-grabbing transition-all duration-100 flex flex-col gap-0.5 group relative
+                          ${
+                            v.type === "outsource"
+                              ? "border-dashed border-amber-300 bg-amber-50/40 dark:bg-amber-950/10"
+                              : "border bg-card hover:bg-muted/10"
+                          } ${draggedQueueIndex === idx ? "opacity-40 scale-95" : ""}`}
                       >
-                        #{idx + 1}
-                      </Badge>
-                      <span className="font-mono font-bold text-[11px] truncate text-foreground">
-                        {v.plate}
-                      </span>
-                      <button
-                        className="ml-auto opacity-0 group-hover:opacity-100 w-4 h-4 rounded hover:bg-rose-100 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
-                        onClick={() => handleRemoveFromQueue(v.id)}
-                        title="Sıradan çıkar"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
+                        <div className="flex items-center gap-1">
+                          <GripVertical className="w-3 h-3 text-muted-foreground/50 shrink-0" />
+                          <Badge
+                            variant="secondary"
+                            className="font-mono bg-blue-100 text-blue-800 text-[9px] px-1 py-0 rounded shrink-0 font-extrabold dark:bg-blue-950 dark:text-blue-300"
+                          >
+                            #{idx + 1}
+                          </Badge>
+                          <span className="font-mono font-bold text-[11px] truncate text-foreground">
+                            {v.plate}
+                          </span>
+                          <button
+                            className="ml-auto opacity-0 group-hover:opacity-100 w-4 h-4 rounded hover:bg-rose-100 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
+                            onClick={() => handleRemoveFromQueue(v.id)}
+                            title="Sıradan çıkar"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground truncate pl-4">
+                          {v.driverName || "—"}
+                        </span>
+                      </div>
+                      {showIndicatorBelow && (
+                        <div className="h-1 bg-primary rounded my-1 shadow-sm shadow-primary/30 transition-all animate-pulse" />
+                      )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground truncate pl-4">
-                      {v.driverName || "—"}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Add to queue */}
