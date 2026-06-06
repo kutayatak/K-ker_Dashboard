@@ -559,15 +559,8 @@ router.post("/batch-notify", async (req, res) => {
 
     const links: Array<{ driverName: string; phone: string; url: string; taskIds: number[] }> = [];
 
-    // 4. Update tasks, insert accounting records, and update vehicles in a single transaction
+    // 4. Update tasks and insert accounting records in a single transaction
     await db.transaction(async (tx) => {
-      // Get max queue position once
-      const emptyVehicles = await tx
-        .select({ qp: vehiclesTable.queuePosition })
-        .from(vehiclesTable)
-        .where(eq(vehiclesTable.status, "empty"));
-      let maxPos = emptyVehicles.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);
-
       for (const [vehicleId, data] of driverTasks.entries()) {
         // Sort tasks by scheduled time
         const sortedTasks = data.tasks.sort(
@@ -657,13 +650,6 @@ router.post("/batch-notify", async (req, res) => {
             .values(accountingInserts)
             .onConflictDoNothing();
         }
-
-        // 4C. Move vehicle back to empty queue (FIFO — add to end)
-        maxPos++;
-        await tx
-          .update(vehiclesTable)
-          .set({ status: "empty", queuePosition: maxPos })
-          .where(eq(vehiclesTable.id, vehicleId));
 
         sent += updatedTaskIds.length;
       }
@@ -861,26 +847,6 @@ router.patch("/:id", async (req, res) => {
         date: today,
       })
       .onConflictDoNothing();
-
-    // Move vehicle back to empty queue (FIFO — add to end)
-    const all = await db
-      .select({ qp: vehiclesTable.queuePosition })
-      .from(vehiclesTable)
-      .where(eq(vehiclesTable.status, "empty"));
-    const maxPos = all.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);
-
-    await db
-      .update(vehiclesTable)
-      .set({ status: "empty", queuePosition: maxPos + 1 })
-      .where(eq(vehiclesTable.id, task.vehicleId));
-  }
-
-  // If task is in_progress, mark vehicle as busy
-  if (parsed.data.status === "in_progress" && task.vehicleId) {
-    await db
-      .update(vehiclesTable)
-      .set({ status: "busy", queuePosition: null })
-      .where(eq(vehiclesTable.id, task.vehicleId));
   }
 
   return res.json(await enrichTask(task));
