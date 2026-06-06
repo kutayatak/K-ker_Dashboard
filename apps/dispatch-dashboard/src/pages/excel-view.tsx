@@ -595,7 +595,7 @@ export function ExcelView() {
         pickupLoc = editForm.hotelName.trim() || "Teknik İş";
       } else if (isExtra) {
         pickupLoc = editForm.hotelName.trim() || "Ekstra İş";
-        dropoffLoc = isRight ? "Ekstra Gelir" : "Ekstra Gider";
+        dropoffLoc = isRight ? "Ekstra Gider" : "Ekstra Gelir";
       } else if (isRight) {
         pickupLoc = editingTask.pickupLocation || "Esenboğa Havalimanı";
         dropoffLoc = editForm.hotelName.trim() || "Otel";
@@ -655,7 +655,7 @@ export function ExcelView() {
         dropoffLoc = "Teknik İş";
       } else if (isExtra) {
         pickupLoc = addForm.hotelName.trim() || "Ekstra İş";
-        dropoffLoc = isRight ? "Ekstra Gelir" : "Ekstra Gider";
+        dropoffLoc = isRight ? "Ekstra Gider" : "Ekstra Gelir";
       } else if (isRight) {
         pickupLoc = "Esenboğa Havalimanı";
         dropoffLoc = addForm.hotelName.trim() || "Otel";
@@ -977,13 +977,6 @@ export function ExcelView() {
                     </span>
                   )}
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={handleCopy}
-                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-[9px] font-bold rounded shadow-xs transition-all flex items-center"
-                    >
-                      <Copy className="w-2.5 h-2.5 mr-0.5" />
-                      Kopyala
-                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1892,6 +1885,7 @@ export function ExcelView() {
                               className={`p-1 ${lc ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
                             >
                               <input
+                                key={`${leftTask.id}-${leftTask.km ?? "null"}-${leftTask.status}`}
                                 type="number"
                                 min={0}
                                 disabled={lc}
@@ -1981,6 +1975,7 @@ export function ExcelView() {
                               className={`p-1 ${rc ? "bg-rose-50/10 dark:bg-rose-950/10 opacity-60" : ""}`}
                             >
                               <input
+                                key={`${rightTask.id}-${rightTask.km ?? "null"}-${rightTask.status}`}
                                 type="number"
                                 min={0}
                                 disabled={rc}
@@ -2040,16 +2035,16 @@ export function ExcelView() {
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Badge
                   variant="outline"
-                  className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                  className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
                 >
-                  EKSTRA GİDER
+                  EKSTRA GELİR
                 </Badge>
                 <span className="text-muted-foreground text-xs">&bull;</span>
                 <Badge
                   variant="outline"
-                  className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                  className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
                 >
-                  EKSTRA GELİR
+                  EKSTRA GİDER
                 </Badge>
               </h3>
               <div className="flex items-center gap-3">
@@ -2060,26 +2055,26 @@ export function ExcelView() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 dark:border-amber-900 bg-amber-50/10 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/40 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-emerald-200 dark:border-emerald-900 bg-emerald-50/10 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "left", type: "extra" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                    + Ekstra Gider Ekle
+                    <Plus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                    + Ekstra Gelir Ekle
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[10px] px-2 py-0 font-bold border-emerald-200 dark:border-emerald-900 bg-emerald-50/10 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 gap-1 rounded"
+                    className="h-7 text-[10px] px-2 py-0 font-bold border-amber-200 dark:border-amber-900 bg-amber-50/10 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/40 gap-1 rounded"
                     onClick={() => {
                       setAddingTaskState({ tableType: "right", type: "extra" });
                       setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                     }}
                   >
-                    <Plus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                    + Ekstra Gelir Ekle
+                    <Plus className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    + Ekstra Gider Ekle
                   </Button>
                 </div>
               </div>
@@ -2096,28 +2091,28 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="extra"
                       colIndex={0}
-                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-center"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-center"
                     >
                       S.NO
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={1}
-                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-center"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={2}
-                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={3}
-                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
+                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
                     >
                       OTEL / AÇIKLAMA
                     </ResizeTh>
@@ -2129,21 +2124,21 @@ export function ExcelView() {
                     <ResizeTh
                       tableType="extra"
                       colIndex={5}
-                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-center"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-center"
                     >
                       SAAT
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={6}
-                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
                     >
                       PLAKA (SÜRÜCÜ)
                     </ResizeTh>
                     <ResizeTh
                       tableType="extra"
                       colIndex={7}
-                      className="bg-emerald-500/5 text-emerald-800 dark:text-emerald-400 text-left"
+                      className="bg-amber-500/5 text-amber-800 dark:text-amber-400 text-left"
                     >
                       OTEL / AÇIKLAMA
                     </ResizeTh>
@@ -2170,7 +2165,7 @@ export function ExcelView() {
                               {idx + 1}
                             </td>
                             <td
-                              className={`p-1.5 text-center font-bold bg-amber-50/10 cursor-pointer ${lec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
+                              className={`p-1.5 text-center font-bold bg-emerald-50/10 cursor-pointer ${lec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
                               onDoubleClick={() => le && openEdit(le)}
                             >
                               {utcTime(le.scheduledTime)}
@@ -2203,7 +2198,7 @@ export function ExcelView() {
                                 setAddingTaskState({ tableType: "left", type: "extra" });
                                 setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                               }}
-                              title="Çift tıklayarak yeni Ekstra Gider (Sol) işi ekle"
+                              title="Çift tıklayarak yeni Ekstra Gelir (Sol) işi ekle"
                             />
                           </>
                         )}
@@ -2211,7 +2206,7 @@ export function ExcelView() {
                         {re ? (
                           <>
                             <td
-                              className={`p-1.5 text-center font-bold bg-emerald-50/10 cursor-pointer ${rec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-emerald-600"}`}
+                              className={`p-1.5 text-center font-bold bg-amber-50/10 cursor-pointer ${rec ? "text-rose-700/60 bg-rose-50/20 line-through dark:text-rose-400/50 dark:bg-rose-950/10" : "text-amber-600"}`}
                               onDoubleClick={() => re && openEdit(re)}
                             >
                               {utcTime(re.scheduledTime)}
@@ -2240,7 +2235,7 @@ export function ExcelView() {
                               setAddingTaskState({ tableType: "right", type: "extra" });
                               setAddForm({ flightCode: "", time: "09:00", notes: "", km: "", hotelName: "" });
                             }}
-                            title="Çift tıklayarak yeni Ekstra Gelir (Sağ) işi ekle"
+                            title="Çift tıklayarak yeni Ekstra Gider (Sağ) işi ekle"
                           />
                         )}
                       </tr>
@@ -2378,6 +2373,7 @@ export function ExcelView() {
                         </td>
                         <td className={`p-1 ${cancelled ? "opacity-60" : ""}`}>
                           <input
+                            key={`${task.id}-${task.km ?? "null"}-${task.status}`}
                             type="number"
                             min={0}
                             disabled={cancelled}
