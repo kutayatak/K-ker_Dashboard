@@ -58,11 +58,20 @@ app.use(
   }),
 );
 
-const allowedOrigins = [process.env.FRONTEND_URL, "http://localhost:5173"].filter(Boolean) as string[];
+const isAllowedOrigin = (origin: string): boolean => {
+  if (!origin) return true;
+  if (origin.startsWith("http://localhost:")) return true;
+  if (origin.endsWith(".vercel.app")) return true;
+  if (origin.includes("koker-dashboard")) return true;
+  const allowed = [process.env.FRONTEND_URL, "http://localhost:5173"].filter(Boolean) as string[];
+  if (allowed.includes(origin)) return true;
+  return false;
+};
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
