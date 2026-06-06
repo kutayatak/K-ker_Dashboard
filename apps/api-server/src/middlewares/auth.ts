@@ -2,8 +2,8 @@ import type { Request, Response, NextFunction } from "express";
 
 export function apiKeyMiddleware(req: Request, res: Response, next: NextFunction): void {
   const path = req.originalUrl || req.path;
-  // Skip authentication for health check and webhook endpoints
-  if (path.includes("/healthz") || path.includes("/webhook")) {
+  // Skip authentication for health check, webhook, and diagnostic endpoints
+  if (path.includes("/healthz") || path.includes("/webhook") || path.includes("/db-diagnostic")) {
     next();
     return;
   }
