@@ -273,13 +273,13 @@ router.get("/download", async (req: any, res: any) => {
           }
         }
 
-        // Append manually-added tasks (rowIndex == null) after the template rows
-        appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes);
+        // Append manually-added tasks (rowIndex == null) starting at Column O (index 15), row 4
+        appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes, true);
       }
     } else {
       // ── CASE B: No template → generate a clean workbook with all tasks ──
       const ws = wb.addWorksheet(`Sevkiyat ${requestedYMD}`);
-      appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes);
+      appendManualTasks(ws, tasks, vehicleMap, getPlateFromNotes, false);
     }
 
     // Write back to buffer and send
@@ -325,6 +325,7 @@ function appendManualTasks(
   }>,
   vehicleMap: Map<number, string>,
   getPlateFromNotes: (notes: string | null | undefined) => string,
+  useColumnO: boolean = false,
 ) {
   const manualTasks = tasks.filter((t) => t.rowIndex == null);
   if (manualTasks.length === 0) return;
@@ -334,27 +335,40 @@ function appendManualTasks(
     (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime(),
   );
 
-  // Find the actual last row with content (to skip empty formatted rows at the bottom of templates)
-  let lastContentRow = 0;
-  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-    let hasValue = false;
-    row.eachCell({ includeEmpty: false }, (cell) => {
-      if (cell.value !== null && cell.value !== undefined && String(cell.value).trim() !== "") {
-        hasValue = true;
+  let lastRow = 1;
+  let startCol = 1;
+
+  if (useColumnO) {
+    lastRow = 4;
+    startCol = 15; // Column O is 15
+  } else {
+    // Find the actual last row with content (to skip empty formatted rows at the bottom of templates)
+    let lastContentRow = 0;
+    ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      let hasValue = false;
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        if (cell.value !== null && cell.value !== undefined && String(cell.value).trim() !== "") {
+          hasValue = true;
+        }
+      });
+      if (hasValue) {
+        lastContentRow = Math.max(lastContentRow, rowNumber);
       }
     });
-    if (hasValue) {
-      lastContentRow = Math.max(lastContentRow, rowNumber);
-    }
-  });
 
-  let lastRow = lastContentRow > 0 ? lastContentRow + 2 : 1;
+    lastRow = lastContentRow > 0 ? lastContentRow + 2 : 1;
+    startCol = 1;
+  }
 
   // Section header
   const headerRow = ws.getRow(lastRow);
-  headerRow.getCell(1).value = "Elle Eklenen İşler";
-  headerRow.getCell(1).font = { bold: true, size: 12, color: { argb: "FF1D6348" } };
-  headerRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1FAE5" } };
+  headerRow.getCell(startCol).value = "Elle Eklenen İşler";
+  headerRow.getCell(startCol).font = { bold: true, size: 12, color: { argb: "FF1D6348" } };
+  headerRow.getCell(startCol).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1FAE5" } };
+  if (useColumnO) {
+    // Merge cells for header to look neat (O to Q)
+    ws.mergeCells(lastRow, startCol, lastRow, startCol + 2);
+  }
   headerRow.commit();
   lastRow++;
 
@@ -362,7 +376,7 @@ function appendManualTasks(
   const cols = ["S.NO", "TİP", "UÇUŞ KODU", "SAAT", "NEREDEN", "NEREYE", "PLAKA", "EKİP", "KM", "DURUM"];
   const colHeaderRow = ws.getRow(lastRow);
   cols.forEach((col, i) => {
-    const cell = colHeaderRow.getCell(i + 1);
+    const cell = colHeaderRow.getCell(startCol + i);
     cell.value = col;
     cell.font = { bold: true };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
@@ -414,16 +428,16 @@ function appendManualTasks(
           : "Taslak";
 
     const dataRow = ws.getRow(lastRow);
-    dataRow.getCell(1).value = sno++;
-    dataRow.getCell(2).value = typeLabel;
-    dataRow.getCell(3).value = task.flightCode ?? "";
-    dataRow.getCell(4).value = timeStr;
-    dataRow.getCell(5).value = task.pickupLocation ?? "";
-    dataRow.getCell(6).value = task.dropoffLocation ?? "";
-    dataRow.getCell(7).value = plate;
-    dataRow.getCell(8).value = crew;
-    dataRow.getCell(9).value = task.km ? Number(task.km) : "";
-    dataRow.getCell(10).value = statusLabel;
+    dataRow.getCell(startCol + 0).value = sno++;
+    dataRow.getCell(startCol + 1).value = typeLabel;
+    dataRow.getCell(startCol + 2).value = task.flightCode ?? "";
+    dataRow.getCell(startCol + 3).value = timeStr;
+    dataRow.getCell(startCol + 4).value = task.pickupLocation ?? "";
+    dataRow.getCell(startCol + 5).value = task.dropoffLocation ?? "";
+    dataRow.getCell(startCol + 6).value = plate;
+    dataRow.getCell(startCol + 7).value = crew;
+    dataRow.getCell(startCol + 8).value = task.km ? Number(task.km) : "";
+    dataRow.getCell(startCol + 9).value = statusLabel;
     dataRow.commit();
     lastRow++;
   }
