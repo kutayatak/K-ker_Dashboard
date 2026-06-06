@@ -167,288 +167,303 @@ function getBaseAndSuffix(plateStr: string) {
 
 // POST /tasks/import
 router.post("/import", async (req, res) => {
-  const parsed = ImportTasksBody.safeParse(req.body);
-  if (!parsed.success)
-    return res
-      .status(400)
-      .json({ error: "Invalid body", details: parsed.error });
+  try {
+    const parsed = ImportTasksBody.safeParse(req.body);
+    if (!parsed.success)
+      return res
+        .status(400)
+        .json({ error: "Invalid body", details: parsed.error });
 
-  const { tasks, excelDate, excelFilename } = parsed.data;
+    const { tasks, excelDate, excelFilename } = parsed.data;
 
-  // NOTE: Excel file is now saved separately via POST /excel/upload
-  // (excelBase64 is no longer included in tasks/import payload)
+    // NOTE: Excel file is now saved separately via POST /excel/upload
+    // (excelBase64 is no longer included in tasks/import payload)
 
-  // ── Load route presets for auto-KM ──────────────────────────────────────
-  const presets = await db.select().from(routePresetsTable);
+    // ── Load route presets for auto-KM ──────────────────────────────────────
+    const presets = await db.select().from(routePresetsTable);
 
-  // Load all vehicles once for efficient space-insensitive matching and in-memory enrichment
-  const allVehicles = await db.select().from(vehiclesTable);
-  const vehicleMap = new Map<number, any>(
-    allVehicles.map((v: any) => [v.id, v]),
-  );
+    // Load all vehicles once for efficient space-insensitive matching and in-memory enrichment
+    const allVehicles = await db.select().from(vehiclesTable);
+    const vehicleMap = new Map<number, any>(
+      allVehicles.map((v: any) => [v.id, v]),
+    );
 
-  function enrichTaskInMemory(task: typeof tasksTable.$inferSelect) {
-    if (task.vehicleId) {
-      const vehicle = vehicleMap.get(task.vehicleId);
+    function enrichTaskInMemory(task: typeof tasksTable.$inferSelect) {
+      if (task.vehicleId) {
+        const vehicle = vehicleMap.get(task.vehicleId);
+        return {
+          ...task,
+          fee: task.fee ? Number(task.fee) : null,
+          vehicleName: vehicle?.name ?? null,
+          driverName: vehicle?.driverName ?? null,
+        };
+      }
       return {
         ...task,
         fee: task.fee ? Number(task.fee) : null,
-        vehicleName: vehicle?.name ?? null,
-        driverName: vehicle?.driverName ?? null,
+        vehicleName: null,
+        driverName: null,
       };
     }
-    return {
-      ...task,
-      fee: task.fee ? Number(task.fee) : null,
-      vehicleName: null,
-      driverName: null,
-    };
-  }
 
-  // Load existing tasks by importKey in a single batch query
-  const importKeys = tasks
-    .map((t: any) => t.importKey)
-    .filter(Boolean) as string[];
-  const existingTasks = importKeys.length
-    ? await db
-        .select({
-          id: tasksTable.id,
-          importKey: tasksTable.importKey,
-          vehicleId: tasksTable.vehicleId,
-          status: tasksTable.status,
-        })
-        .from(tasksTable)
-        .where(inArray(tasksTable.importKey, importKeys))
-    : [];
+    // Load existing tasks by importKey in a single batch query
+    const importKeys = tasks
+      .map((t: any) => t.importKey)
+      .filter(Boolean) as string[];
+    const existingTasks = importKeys.length
+      ? await db
+          .select({
+            id: tasksTable.id,
+            importKey: tasksTable.importKey,
+            vehicleId: tasksTable.vehicleId,
+            status: tasksTable.status,
+          })
+          .from(tasksTable)
+          .where(inArray(tasksTable.importKey, importKeys))
+      : [];
 
-  const existingTasksMap = new Map<string, (typeof existingTasks)[number]>(
-    existingTasks.map((et: any) => [et.importKey!, et]),
-  );
+    const existingTasksMap = new Map<string, (typeof existingTasks)[number]>(
+      existingTasks.map((et: any) => [et.importKey!, et]),
+    );
 
-  const created: any[] = [];
-  const updatedTasks: any[] = [];
-  let updatedCount = 0;
-  let skipped = 0;
+    const created: any[] = [];
+    const updatedTasks: any[] = [];
+    let updatedCount = 0;
+    let skipped = 0;
 
-  // Execute all inserts/updates in a single transaction for maximum speed
-  await db.transaction(async (tx: any) => {
-    if (excelDate) {
-      const [y, m, d] = excelDate.split("-").map(Number);
-      const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-      // Extend end to cover midnight-overflow tasks (e.g. 01:00 next day)
-      const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0));
+    // Execute all inserts/updates in a single transaction for maximum speed
+    await db.transaction(async (tx: any) => {
+      if (excelDate) {
+        const [y, m, d] = excelDate.split("-").map(Number);
+        const shiftStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+        // Extend end to cover midnight-overflow tasks (e.g. 01:00 next day)
+        const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0));
 
-      if (importKeys.length > 0) {
-        // Delete drafts that have an importKey but are not in the new import list
-        await tx
-          .delete(tasksTable)
-          .where(
-            sql`
-              (
-                ${tasksTable.shiftDate} = ${excelDate}
-                OR (
-                  ${tasksTable.shiftDate} IS NULL
-                  AND ${tasksTable.scheduledTime} >= ${shiftStart}
-                  AND ${tasksTable.scheduledTime} < ${shiftEnd}
+        if (importKeys.length > 0) {
+          // Delete drafts that have an importKey but are not in the new import list
+          await tx
+            .delete(tasksTable)
+            .where(
+              sql`
+                (
+                  ${tasksTable.shiftDate} = ${excelDate}
+                  OR (
+                    ${tasksTable.shiftDate} IS NULL
+                    AND ${tasksTable.scheduledTime} >= ${shiftStart}
+                    AND ${tasksTable.scheduledTime} < ${shiftEnd}
+                  )
                 )
-              )
-              AND ${tasksTable.importKey} IS NOT NULL
-              AND NOT (${tasksTable.importKey} = ANY(${importKeys}))
-              AND ${tasksTable.status} = 'draft'
-            `,
-          );
-      } else {
-        // If import list is empty, delete all drafts for that day
-        await tx
-          .delete(tasksTable)
-          .where(
-            sql`
-              (
-                ${tasksTable.shiftDate} = ${excelDate}
-                OR (
-                  ${tasksTable.shiftDate} IS NULL
-                  AND ${tasksTable.scheduledTime} >= ${shiftStart}
-                  AND ${tasksTable.scheduledTime} < ${shiftEnd}
+                AND ${tasksTable.importKey} IS NOT NULL
+                AND NOT (${tasksTable.importKey} = ANY(${importKeys}))
+                AND ${tasksTable.status} = 'draft'
+              `,
+            );
+        } else {
+          // If import list is empty, delete all drafts for that day
+          await tx
+            .delete(tasksTable)
+            .where(
+              sql`
+                (
+                  ${tasksTable.shiftDate} = ${excelDate}
+                  OR (
+                    ${tasksTable.shiftDate} IS NULL
+                    AND ${tasksTable.scheduledTime} >= ${shiftStart}
+                    AND ${tasksTable.scheduledTime} < ${shiftEnd}
+                  )
                 )
-              )
-              AND ${tasksTable.importKey} IS NOT NULL
-              AND ${tasksTable.status} = 'draft'
-            `,
-          );
+                AND ${tasksTable.importKey} IS NOT NULL
+                AND ${tasksTable.status} = 'draft'
+              `,
+            );
+        }
       }
-    }
 
-    for (const t of tasks) {
-      try {
-        let vehicleId: number | null = null;
-        const isImportCancelled =
-          (t as any).status === "cancelled" ||
-          (t.notes &&
-            (t.notes.includes("İPTAL") ||
-              t.notes.includes("IPTAL") ||
-              t.notes.toLowerCase().includes("iptal")));
+      for (const t of tasks) {
+        try {
+          let vehicleId: number | null = null;
+          const isImportCancelled =
+            (t as any).status === "cancelled" ||
+            (t.notes &&
+              (t.notes.includes("İPTAL") ||
+                t.notes.includes("IPTAL") ||
+                t.notes.toLowerCase().includes("iptal")));
 
-        const hasPlate =
-          t.notes &&
-          (t.notes.includes("Plaka:") ||
-            t.notes.toLowerCase().includes("plaka")) &&
-          !isImportCancelled;
-        const status = isImportCancelled
-          ? "cancelled"
-          : hasPlate
-            ? "completed"
-            : "draft";
+          const hasPlate =
+            t.notes &&
+            (t.notes.includes("Plaka:") ||
+              t.notes.toLowerCase().includes("plaka")) &&
+            !isImportCancelled;
+          const status = isImportCancelled
+            ? "cancelled"
+            : hasPlate
+              ? "completed"
+              : "draft";
 
-        if (hasPlate && t.notes && !isImportCancelled) {
-          const plateMatch = t.notes.match(/Plaka:\s*([^|]+)/i);
-          if (plateMatch) {
-            const plate = plateMatch[1].trim();
-            const imported = getBaseAndSuffix(plate);
-            const normalizedImportedBase = normalizePlate(imported.base);
+          if (hasPlate && t.notes && !isImportCancelled) {
+            const plateMatch = t.notes.match(/Plaka:\s*([^|]+)/i);
+            if (plateMatch) {
+              const plate = plateMatch[1].trim();
+              const imported = getBaseAndSuffix(plate);
+              const normalizedImportedBase = normalizePlate(imported.base);
 
-            // Match in-memory: find vehicles whose normalized base plate matches the normalized imported base plate
-            const matches = allVehicles.filter((v: any) => {
-              const dbParsed = getBaseAndSuffix(v.plate);
-              return normalizePlate(dbParsed.base) === normalizedImportedBase;
-            });
-
-            if (matches.length > 0) {
-              let vehicle = null;
-              const taskTime = new Date(t.scheduledTime);
-              const hour = taskTime.getHours();
-
-              // Shift hour logic:
-              // Vardiya 1: 06:00 to 14:00
-              // Vardiya 2: 14:00 to 22:00
-              // Vardiya 3: 22:00 to 06:00
-              let shiftSuffix = "";
-              if (hour >= 6 && hour < 14) shiftSuffix = "V1";
-              else if (hour >= 14 && hour < 22) shiftSuffix = "V2";
-              else shiftSuffix = "V3";
-
-              const shiftMatch = matches.find((m: any) => {
-                const dbParsed = getBaseAndSuffix(m.plate);
-                return dbParsed.suffix === shiftSuffix;
+              // Match in-memory: find vehicles whose normalized base plate matches the normalized imported base plate
+              const matches = allVehicles.filter((v: any) => {
+                const dbParsed = getBaseAndSuffix(v.plate);
+                return normalizePlate(dbParsed.base) === normalizedImportedBase;
               });
-              vehicle = shiftMatch || matches[0];
 
-              if (vehicle) {
-                vehicleId = vehicle.id;
+              if (matches.length > 0) {
+                let vehicle = null;
+                const taskTime = new Date(t.scheduledTime);
+                const hour = taskTime.getHours();
+
+                // Shift hour logic:
+                // Vardiya 1: 06:00 to 14:00
+                // Vardiya 2: 14:00 to 22:00
+                // Vardiya 3: 22:00 to 06:00
+                let shiftSuffix = "";
+                if (hour >= 6 && hour < 14) shiftSuffix = "V1";
+                else if (hour >= 14 && hour < 22) shiftSuffix = "V2";
+                else shiftSuffix = "V3";
+
+                const shiftMatch = matches.find((m: any) => {
+                  const dbParsed = getBaseAndSuffix(m.plate);
+                  return dbParsed.suffix === shiftSuffix;
+                });
+                vehicle = shiftMatch || matches[0];
+
+                if (vehicle) {
+                  vehicleId = vehicle.id;
+                }
               }
             }
           }
-        }
 
-        // Auto-fill KM from route preset if not provided (direction-independent)
-        let km = t.km != null ? String(t.km) : null;
-        if (!km) {
-          const pickupNormalized = (t.pickupLocation ?? "").trim().toLowerCase();
-          const dropoffNormalized = (t.dropoffLocation ?? "").trim().toLowerCase();
-          if (pickupNormalized && dropoffNormalized) {
-            const match = presets.find(
-              (p: any) => {
-                const pPickup = p.pickupLocation.trim().toLowerCase();
-                const pDropoff = p.dropoffLocation.trim().toLowerCase();
-                return (
-                  (pPickup === pickupNormalized && pDropoff === dropoffNormalized) ||
-                  (pPickup === dropoffNormalized && pDropoff === pickupNormalized)
-                );
-              }
-            );
-            if (match) km = String(match.km);
-          }
-        }
-
-        const existing = t.importKey ? existingTasksMap.get(t.importKey) : null;
-
-        if (existing) {
-          // Task already exists, update it but preserve status and assignment if not draft
-          let finalStatus = status;
-          let finalVehicleId = vehicleId;
-
-          if (existing.status !== "draft") {
-            finalStatus = existing.status;
-            finalVehicleId = existing.vehicleId;
+          // Auto-fill KM from route preset if not provided (direction-independent)
+          let km = t.km != null ? String(t.km) : null;
+          if (!km) {
+            const pickupNormalized = (t.pickupLocation ?? "").trim().toLowerCase();
+            const dropoffNormalized = (t.dropoffLocation ?? "").trim().toLowerCase();
+            if (pickupNormalized && dropoffNormalized) {
+              const match = presets.find(
+                (p: any) => {
+                  const pPickup = p.pickupLocation.trim().toLowerCase();
+                  const pDropoff = p.dropoffLocation.trim().toLowerCase();
+                  return (
+                    (pPickup === pickupNormalized && pDropoff === dropoffNormalized) ||
+                    (pPickup === dropoffNormalized && pDropoff === pickupNormalized)
+                  );
+                }
+              );
+              if (match) km = String(match.km);
+            }
           }
 
-          const updateValues = {
-            type: t.type,
-            flightCode: t.flightCode ?? null,
-            passengerCount: t.passengerCount,
-            pickupLocation: t.pickupLocation,
-            dropoffLocation: t.dropoffLocation,
-            scheduledTime: new Date(t.scheduledTime),
-            notes: t.notes ?? null,
-            fee: t.fee != null ? String(t.fee) : null,
-            km,
-            rowIndex: t.rowIndex ?? null,
-            tableType: t.tableType ?? null,
-            shiftDate: excelDate ?? null,
-            status: finalStatus,
-            vehicleId: isImportCancelled ? null : finalVehicleId,
-          };
+          const existing = t.importKey ? existingTasksMap.get(t.importKey) : null;
 
-          const [updatedTask] = await tx
-            .update(tasksTable)
-            .set(updateValues)
-            .where(eq(tasksTable.id, existing.id))
-            .returning();
+          if (existing) {
+            // Task already exists, update it but preserve status and assignment if not draft
+            let finalStatus = status;
+            let finalVehicleId = vehicleId;
 
-          if (updatedTask) {
-            updatedTasks.push(enrichTaskInMemory(updatedTask));
-            updatedCount++;
+            if (existing.status !== "draft") {
+              finalStatus = existing.status;
+              finalVehicleId = existing.vehicleId;
+            }
+
+            const updateValues = {
+              type: t.type,
+              flightCode: t.flightCode ?? null,
+              passengerCount: t.passengerCount,
+              pickupLocation: t.pickupLocation,
+              dropoffLocation: t.dropoffLocation,
+              scheduledTime: new Date(t.scheduledTime),
+              notes: t.notes ?? null,
+              fee: t.fee != null ? String(t.fee) : null,
+              km,
+              rowIndex: t.rowIndex ?? null,
+              tableType: t.tableType ?? null,
+              shiftDate: excelDate ?? null,
+              status: finalStatus,
+              vehicleId: isImportCancelled ? null : finalVehicleId,
+            };
+
+            const [updatedTask] = await tx
+              .update(tasksTable)
+              .set(updateValues)
+              .where(eq(tasksTable.id, existing.id))
+              .returning();
+
+            if (updatedTask) {
+              updatedTasks.push(enrichTaskInMemory(updatedTask));
+              updatedCount++;
+            } else {
+              skipped++;
+            }
           } else {
-            skipped++;
-          }
-        } else {
-          // Task does not exist, insert it
-          const insertValues = {
-            type: t.type,
-            flightCode: t.flightCode ?? null,
-            passengerCount: t.passengerCount,
-            pickupLocation: t.pickupLocation,
-            dropoffLocation: t.dropoffLocation,
-            scheduledTime: new Date(t.scheduledTime),
-            notes: t.notes ?? null,
-            fee: t.fee != null ? String(t.fee) : null,
-            km,
-            importKey: t.importKey ?? null,
-            rowIndex: t.rowIndex ?? null,
-            tableType: t.tableType ?? null,
-            shiftDate: excelDate ?? null,
-            status,
-            vehicleId: isImportCancelled ? null : vehicleId,
-          };
+            // Task does not exist, insert it
+            const insertValues = {
+              type: t.type,
+              flightCode: t.flightCode ?? null,
+              passengerCount: t.passengerCount,
+              pickupLocation: t.pickupLocation,
+              dropoffLocation: t.dropoffLocation,
+              scheduledTime: new Date(t.scheduledTime),
+              notes: t.notes ?? null,
+              fee: t.fee != null ? String(t.fee) : null,
+              km,
+              importKey: t.importKey ?? null,
+              rowIndex: t.rowIndex ?? null,
+              tableType: t.tableType ?? null,
+              shiftDate: excelDate ?? null,
+              status,
+              vehicleId: isImportCancelled ? null : vehicleId,
+            };
 
-          const [newTask] = await tx
-            .insert(tasksTable)
-            .values(insertValues)
-            .onConflictDoNothing()
-            .returning();
+            const [newTask] = await tx
+              .insert(tasksTable)
+              .values(insertValues)
+              .onConflictDoNothing()
+              .returning();
 
-          if (newTask) {
-            created.push(enrichTaskInMemory(newTask));
-          } else {
-            skipped++;
+            if (newTask) {
+              created.push(enrichTaskInMemory(newTask));
+            } else {
+              skipped++;
+            }
           }
+        } catch (err) {
+          const { logger } = await import("../lib/logger");
+          logger.error(
+            { err, importKey: t.importKey },
+            "Task import insert/update failed due to unexpected database error",
+          );
+          skipped++;
         }
-      } catch (err) {
-        const { logger } = await import("../lib/logger");
-        logger.error(
-          { err, importKey: t.importKey },
-          "Task import insert/update failed due to unexpected database error",
-        );
-        skipped++;
       }
-    }
-  });
+    });
 
-  return res.json({
-    created: created.length,
-    updated: updatedCount,
-    skipped,
-    tasks: [...created, ...updatedTasks],
-  });
+    return res.json({
+      created: created.length,
+      updated: updatedCount,
+      skipped,
+      tasks: [...created, ...updatedTasks],
+    });
+  } catch (err: any) {
+    console.error("[tasks/import] error:", err);
+    (globalThis as any).lastImportError = {
+      timestamp: new Date().toISOString(),
+      message: err?.message ?? String(err),
+      stack: err?.stack,
+      name: err?.name,
+      code: err?.code,
+    };
+    return res.status(500).json({
+      error: "Görevler içe aktarılırken bir hata oluştu.",
+      detail: err?.message ?? String(err),
+    });
+  }
 });
 
 // POST /tasks/batch-notify

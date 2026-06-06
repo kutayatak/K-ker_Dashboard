@@ -100,6 +100,13 @@ router.post("/upload", async (req: any, res: any) => {
     return res.json({ ok: true });
   } catch (err: any) {
     console.error("[excel/upload] error:", err);
+    (globalThis as any).lastUploadError = {
+      timestamp: new Date().toISOString(),
+      message: err?.message ?? String(err),
+      stack: err?.stack,
+      name: err?.name,
+      code: err?.code,
+    };
     return res.status(500).json({
       error: "Excel dosyası kaydedilirken bir hata oluştu.",
       detail: err?.message ?? String(err),
@@ -418,7 +425,10 @@ router.get("/db-diagnostic", async (req: any, res: any) => {
     timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV,
     hasDatabaseUrl: !!process.env.DATABASE_URL,
-    checks: {}
+    checks: {},
+    lastGlobalError: (globalThis as any).lastGlobalError ?? null,
+    lastUploadError: (globalThis as any).lastUploadError ?? null,
+    lastImportError: (globalThis as any).lastImportError ?? null,
   };
 
   try {
