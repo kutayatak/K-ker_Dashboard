@@ -450,8 +450,8 @@ router.get("/db-diagnostic", async (req: any, res: any) => {
     checks: {},
     lastGlobalError: (globalThis as any).lastGlobalError ?? null,
     lastUploadError: (globalThis as any).lastUploadError ?? null,
-    lastImportError: (globalThis as any).lastImportError ?? null,
     lastDbErrorLog: null,
+    requestLogs: (globalThis as any).requestLogs ?? [],
   };
 
   try {

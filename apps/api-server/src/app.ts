@@ -11,6 +11,33 @@ import { apiKeyMiddleware } from "./middlewares/auth";
 
 const app: Express = express();
 
+(globalThis as any).requestLogs = (globalThis as any).requestLogs || [];
+app.use((req, res, next) => {
+  try {
+    (globalThis as any).requestLogs.push({
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      url: req.originalUrl || req.url,
+      path: req.path,
+      hasBody: req.body !== undefined,
+      bodyType: typeof req.body,
+      bodyKeys: req.body && typeof req.body === "object" ? Object.keys(req.body) : null,
+      headers: {
+        host: req.headers.host,
+        contentType: req.headers["content-type"],
+        contentLength: req.headers["content-length"],
+        xApiKey: !!req.headers["x-api-key"]
+      }
+    });
+    if ((globalThis as any).requestLogs.length > 50) {
+      (globalThis as any).requestLogs.shift();
+    }
+  } catch (err) {
+    // Ignore logging error
+  }
+  next();
+});
+
 app.use(
   pinoHttp({
     logger,

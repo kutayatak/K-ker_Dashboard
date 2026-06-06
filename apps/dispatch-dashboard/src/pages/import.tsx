@@ -1080,16 +1080,15 @@ export function ImportTasks() {
         if (!uploadRes.ok) {
           let detail = `HTTP ${uploadRes.status}`;
           try {
-            const err = await uploadRes.json();
-            console.error("Excel upload failed:", err);
-            const rawDetail = err?.detail || err?.error || err;
-            detail = typeof rawDetail === "object" ? JSON.stringify(rawDetail) : String(rawDetail);
-          } catch (jsonErr) {
+            const text = await uploadRes.text();
+            detail = text.substring(0, 300);
             try {
-              const text = await uploadRes.text();
-              detail = text.substring(0, 300);
+              const err = JSON.parse(text);
+              console.error("Excel upload failed:", err);
+              const rawDetail = err?.detail || err?.error || err;
+              detail = typeof rawDetail === "object" ? JSON.stringify(rawDetail) : String(rawDetail);
             } catch (_) {}
-          }
+          } catch (_) {}
           alert(`⚠️ Excel dosyası kaydedilemedi: ${detail}\n\nGörevler yine de içe aktarılacak, ancak daha sonra Excel indirme çalışmayabilir.`);
         }
       } catch (e: any) {
