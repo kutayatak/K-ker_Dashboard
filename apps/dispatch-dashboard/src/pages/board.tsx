@@ -1712,7 +1712,7 @@ function QueueList({
                       e.stopPropagation();
                       onRemove(v.id);
                     }}
-                    className="w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 flex items-center justify-center opacity-0 group-hover/qitem:opacity-100 transition-opacity"
+                    className="w-5 h-5 rounded hover:bg-muted text-muted-foreground hover:text-red-500 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover/qitem:opacity-100 transition-opacity"
                     title="Kuyruktan Çıkar"
                   >
                     <Plus className="w-3.5 h-3.5 rotate-45 text-red-500" />

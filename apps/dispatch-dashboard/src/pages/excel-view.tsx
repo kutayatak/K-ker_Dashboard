@@ -1485,7 +1485,7 @@ export function ExcelView() {
                             {v.plate}
                           </span>
                           <button
-                            className="ml-auto opacity-0 group-hover:opacity-100 w-4 h-4 rounded hover:bg-rose-100 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
+                            className="ml-auto opacity-100 md:opacity-0 md:group-hover:opacity-100 w-4 h-4 rounded hover:bg-rose-100 text-muted-foreground hover:text-rose-500 flex items-center justify-center transition-all shrink-0"
                             onClick={() => handleRemoveFromQueue(v.id)}
                             title="Sıradan çıkar"
                           >
