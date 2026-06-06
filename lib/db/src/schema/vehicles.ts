@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,8 +13,11 @@ export const vehiclesTable = pgTable("vehicles", {
   capacity: integer("capacity").default(4),
   queuePosition: integer("queue_position"),
   notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("vehicles_status_type_idx").on(t.status, t.type),
+  index("vehicles_queue_position_idx").on(t.queuePosition),
+]);
 
 export const insertVehicleSchema = createInsertSchema(vehiclesTable).omit({ id: true, createdAt: true });
 export type InsertVehicle = z.infer<typeof insertVehicleSchema>;

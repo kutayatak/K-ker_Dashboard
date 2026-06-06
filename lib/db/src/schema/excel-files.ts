@@ -5,5 +5,5 @@ export const excelFilesTable = pgTable("excel_files", {
   date: text("date").notNull().unique(),       // "YYYY-MM-DD" — one file per day
   filename: text("filename").notNull(),
   data: text("data").notNull(),                // base64-encoded Excel binary
-  uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
 });

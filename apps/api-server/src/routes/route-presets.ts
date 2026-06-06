@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, routePresetsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, routePresetsTable, tasksTable } from "@workspace/db";
+import { eq, or, and, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 
 const router = Router();
@@ -37,6 +37,14 @@ router.patch("/:id", async (req, res) => {
   const parsed = PresetBody.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  const [oldPreset] = await db
+    .select()
+    .from(routePresetsTable)
+    .where(eq(routePresetsTable.id, id))
+    .limit(1);
+
+  if (!oldPreset) return res.status(404).json({ error: "Preset not found" });
+
   const data: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.km != null) data.km = String(parsed.data.km);
 
@@ -45,7 +53,35 @@ router.patch("/:id", async (req, res) => {
     .set(data)
     .where(eq(routePresetsTable.id, id))
     .returning();
-  if (!preset) return res.status(404).json({ error: "Preset not found" });
+
+  if (parsed.data.km != null && oldPreset.km !== data.km) {
+    // Propagate the change to tasks with the same route (direction-independent) having the old KM
+    const pickup = oldPreset.pickupLocation.trim();
+    const dropoff = oldPreset.dropoffLocation.trim();
+    try {
+      await db
+        .update(tasksTable)
+        .set({ km: String(parsed.data.km) })
+        .where(
+          and(
+            or(
+              and(
+                eq(sql`lower(trim(${tasksTable.pickupLocation}))`, pickup.toLowerCase()),
+                eq(sql`lower(trim(${tasksTable.dropoffLocation}))`, dropoff.toLowerCase())
+              ),
+              and(
+                eq(sql`lower(trim(${tasksTable.pickupLocation}))`, dropoff.toLowerCase()),
+                eq(sql`lower(trim(${tasksTable.dropoffLocation}))`, pickup.toLowerCase())
+              )
+            ),
+            eq(tasksTable.km, oldPreset.km)
+          )
+        );
+    } catch (err) {
+      console.error("Failed to propagate preset KM update to tasks:", err);
+    }
+  }
+
   return res.json(preset);
 });
 

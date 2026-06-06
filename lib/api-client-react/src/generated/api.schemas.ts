@@ -295,6 +295,11 @@ export interface WhatsAppWebhookPayload {
   entry?: WhatsAppWebhookPayloadEntryItem[];
 }
 
+export interface TaskCalendarDay {
+  date: string;
+  hasActive: boolean;
+}
+
 export type ListVehiclesParams = {
 type?: ListVehiclesType;
 status?: ListVehiclesStatus;

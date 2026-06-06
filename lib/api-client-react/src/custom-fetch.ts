@@ -337,6 +337,11 @@ export async function customFetch<T = unknown>(
 
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, headersInit);
 
+  // Attach x-api-key header for authentication
+  const metaEnv = typeof import.meta !== "undefined" ? (import.meta as any).env : null;
+  const apiKey = (metaEnv && metaEnv.VITE_API_KEY) || "dev-secret-key-123";
+  headers.set("x-api-key", apiKey);
+
   if (
     typeof init.body === "string" &&
     !headers.has("content-type") &&

@@ -22,6 +22,7 @@ export * from './listVehiclesParams';
 export * from './listVehiclesStatus';
 export * from './listVehiclesType';
 export * from './task';
+export * from './taskCalendarDay';
 export * from './taskImport';
 export * from './taskInput';
 export * from './taskInputType';

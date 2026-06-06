@@ -205,6 +205,16 @@ export const GetTasksSummaryResponse = zod.object({
 
 
 /**
+ * @summary Calendar highlights — active/completed status by date
+ */
+export const GetTasksCalendarResponseItem = zod.object({
+  "date": zod.string(),
+  "hasActive": zod.boolean()
+})
+export const GetTasksCalendarResponse = zod.array(GetTasksCalendarResponseItem)
+
+
+/**
  * @summary Bulk import tasks from parsed Excel data
  */
 export const ImportTasksBody = zod.object({

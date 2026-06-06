@@ -210,6 +210,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/TasksSummary"
 
+  /tasks/calendar:
+    get:
+      operationId: getTasksCalendar
+      tags: [tasks]
+      summary: Calendar highlights — active/completed status by date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskCalendarDay"
+
   /tasks/import:
     post:
       operationId: importTasks
@@ -762,3 +777,12 @@ components:
           type: array
           items:
             type: object
+
+    TaskCalendarDay:
+      type: object
+      required: [date, hasActive]
+      properties:
+        date:
+          type: string
+        hasActive:
+          type: boolean

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, tasksTable, vehiclesTable, accountingTable } from "@workspace/db";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { db, tasksTable, vehiclesTable, accountingTable, routePresetsTable } from "@workspace/db";
+import { eq, and, sql, inArray, or } from "drizzle-orm";
 import {
   ListTasksQueryParams,
   CreateTaskBody,
@@ -84,38 +84,66 @@ router.get("/", async (req, res) => {
 
 // GET /tasks/summary
 router.get("/summary", async (_req, res) => {
-  const allTasks = await db.select().from(tasksTable);
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const todayCompleted = allTasks.filter(
-    (t) =>
-      t.status === "completed" &&
-      t.scheduledTime >= today &&
-      t.scheduledTime < tomorrow,
-  );
+  try {
+    const [summary] = await db
+      .select({
+        total: sql<number>`count(*)`,
+        draft: sql<number>`count(*) filter (where ${tasksTable.status} = 'draft')`,
+        assigned: sql<number>`count(*) filter (where ${tasksTable.status} = 'assigned')`,
+        inProgress: sql<number>`count(*) filter (where ${tasksTable.status} = 'in_progress')`,
+        completed: sql<number>`count(*) filter (where ${tasksTable.status} = 'completed')`,
+        cancelled: sql<number>`count(*) filter (where ${tasksTable.status} = 'cancelled')`,
+        hotelPickups: sql<number>`count(*) filter (where ${tasksTable.type} = 'hotel_pickup')`,
+        airportRuns: sql<number>`count(*) filter (where ${tasksTable.type} = 'airport_run')`,
+        extras: sql<number>`count(*) filter (where ${tasksTable.type} = 'extra')`,
+        todayCompleted: sql<number>`count(*) filter (where ${tasksTable.status} = 'completed' and ${tasksTable.scheduledTime} >= ${today} and ${tasksTable.scheduledTime} < ${tomorrow})`,
+        todayRevenue: sql<number | null>`sum(case when ${tasksTable.status} = 'completed' and ${tasksTable.scheduledTime} >= ${today} and ${tasksTable.scheduledTime} < ${tomorrow} then cast(${tasksTable.fee} as numeric) else 0 end)`,
+      })
+      .from(tasksTable);
 
-  const todayRevenue = todayCompleted.reduce(
-    (sum, t) => sum + Number(t.fee ?? 0),
-    0,
-  );
+    return res.json({
+      total: Number(summary?.total ?? 0),
+      draft: Number(summary?.draft ?? 0),
+      assigned: Number(summary?.assigned ?? 0),
+      inProgress: Number(summary?.inProgress ?? 0),
+      completed: Number(summary?.completed ?? 0),
+      cancelled: Number(summary?.cancelled ?? 0),
+      hotelPickups: Number(summary?.hotelPickups ?? 0),
+      airportRuns: Number(summary?.airportRuns ?? 0),
+      extras: Number(summary?.extras ?? 0),
+      todayCompleted: Number(summary?.todayCompleted ?? 0),
+      todayRevenue: Number(summary?.todayRevenue ?? 0),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to load summary", details: err.message });
+  }
+});
 
-  return res.json({
-    total: allTasks.length,
-    draft: allTasks.filter((t) => t.status === "draft").length,
-    assigned: allTasks.filter((t) => t.status === "assigned").length,
-    inProgress: allTasks.filter((t) => t.status === "in_progress").length,
-    completed: allTasks.filter((t) => t.status === "completed").length,
-    cancelled: allTasks.filter((t) => t.status === "cancelled").length,
-    hotelPickups: allTasks.filter((t) => t.type === "hotel_pickup").length,
-    airportRuns: allTasks.filter((t) => t.type === "airport_run").length,
-    extras: allTasks.filter((t) => t.type === "extra").length,
-    todayCompleted: todayCompleted.length,
-    todayRevenue,
-  });
+// GET /tasks/calendar
+router.get("/calendar", async (_req, res) => {
+  try {
+    const result = await db
+      .select({
+        date: sql<string>`DATE(${tasksTable.scheduledTime})`,
+        hasActive: sql<boolean>`BOOL_OR(${tasksTable.status} != 'completed' AND ${tasksTable.status} != 'cancelled')`,
+      })
+      .from(tasksTable)
+      .groupBy(sql`DATE(${tasksTable.scheduledTime})`);
+
+    return res.json(
+      result.map((r) => ({
+        date: r.date,
+        hasActive: !!r.hasActive,
+      }))
+    );
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to load tasks calendar highlights", details: err.message });
+  }
 });
 
 function normalizePlate(plateStr: string): string {
@@ -151,7 +179,6 @@ router.post("/import", async (req, res) => {
   // (excelBase64 is no longer included in tasks/import payload)
 
   // ── Load route presets for auto-KM ──────────────────────────────────────
-  const { routePresetsTable } = await import("@workspace/db");
   const presets = await db.select().from(routePresetsTable);
 
   // Load all vehicles once for efficient space-insensitive matching and in-memory enrichment
@@ -199,10 +226,10 @@ router.post("/import", async (req, res) => {
   );
 
   const created: any[] = [];
-  let updated = 0;
+  const updatedTasks: any[] = [];
+  let updatedCount = 0;
   let skipped = 0;
 
-  // Execute all inserts/updates in a single transaction for maximum speed
   // Execute all inserts/updates in a single transaction for maximum speed
   await db.transaction(async (tx: any) => {
     if (excelDate) {
@@ -211,18 +238,44 @@ router.post("/import", async (req, res) => {
       // Extend end to cover midnight-overflow tasks (e.g. 01:00 next day)
       const shiftEnd = new Date(Date.UTC(y, m - 1, d + 2, 0, 0, 0, 0));
 
-      await tx
-        .delete(tasksTable)
-        .where(
-          sql`
-            ${tasksTable.shiftDate} = ${excelDate}
-            OR (
-              ${tasksTable.shiftDate} IS NULL
-              AND ${tasksTable.scheduledTime} >= ${shiftStart}
-              AND ${tasksTable.scheduledTime} < ${shiftEnd}
-            )
-          `,
-        );
+      if (importKeys.length > 0) {
+        // Delete drafts that have an importKey but are not in the new import list
+        await tx
+          .delete(tasksTable)
+          .where(
+            sql`
+              (
+                ${tasksTable.shiftDate} = ${excelDate}
+                OR (
+                  ${tasksTable.shiftDate} IS NULL
+                  AND ${tasksTable.scheduledTime} >= ${shiftStart}
+                  AND ${tasksTable.scheduledTime} < ${shiftEnd}
+                )
+              )
+              AND ${tasksTable.importKey} IS NOT NULL
+              AND NOT (${tasksTable.importKey} = ANY(${importKeys}))
+              AND ${tasksTable.status} = 'draft'
+            `,
+          );
+      } else {
+        // If import list is empty, delete all drafts for that day
+        await tx
+          .delete(tasksTable)
+          .where(
+            sql`
+              (
+                ${tasksTable.shiftDate} = ${excelDate}
+                OR (
+                  ${tasksTable.shiftDate} IS NULL
+                  AND ${tasksTable.scheduledTime} >= ${shiftStart}
+                  AND ${tasksTable.scheduledTime} < ${shiftEnd}
+                )
+              )
+              AND ${tasksTable.importKey} IS NOT NULL
+              AND ${tasksTable.status} = 'draft'
+            `,
+          );
+      }
     }
 
     for (const t of tasks) {
@@ -286,52 +339,104 @@ router.post("/import", async (req, res) => {
           }
         }
 
-        // Auto-fill KM from route preset if not provided
+        // Auto-fill KM from route preset if not provided (direction-independent)
         let km = t.km != null ? String(t.km) : null;
         if (!km) {
-          const match = presets.find(
-            (p: any) =>
-              p.pickupLocation.trim().toLowerCase() ===
-                (t.pickupLocation ?? "").trim().toLowerCase() &&
-              p.dropoffLocation.trim().toLowerCase() ===
-                (t.dropoffLocation ?? "").trim().toLowerCase(),
-          );
-          if (match) km = String(match.km);
+          const pickupNormalized = (t.pickupLocation ?? "").trim().toLowerCase();
+          const dropoffNormalized = (t.dropoffLocation ?? "").trim().toLowerCase();
+          if (pickupNormalized && dropoffNormalized) {
+            const match = presets.find(
+              (p: any) => {
+                const pPickup = p.pickupLocation.trim().toLowerCase();
+                const pDropoff = p.dropoffLocation.trim().toLowerCase();
+                return (
+                  (pPickup === pickupNormalized && pDropoff === dropoffNormalized) ||
+                  (pPickup === dropoffNormalized && pDropoff === pickupNormalized)
+                );
+              }
+            );
+            if (match) km = String(match.km);
+          }
         }
 
-        const values = {
-          type: t.type,
-          flightCode: t.flightCode ?? null,
-          passengerCount: t.passengerCount,
-          pickupLocation: t.pickupLocation,
-          dropoffLocation: t.dropoffLocation,
-          scheduledTime: new Date(t.scheduledTime),
-          notes: t.notes ?? null,
-          fee: t.fee != null ? String(t.fee) : null,
-          km,
-          importKey: t.importKey ?? null,
-          rowIndex: t.rowIndex ?? null,
-          tableType: t.tableType ?? null,
-          shiftDate: excelDate ?? null,   // anchor to original import date — never drifts with dateOffset
-          status,
-          vehicleId: isImportCancelled ? null : vehicleId,
-        };
-        const [task] = await tx
-          .insert(tasksTable)
-          .values(values)
-          .onConflictDoNothing()
-          .returning();
+        const existing = t.importKey ? existingTasksMap.get(t.importKey) : null;
 
-        if (task) {
-          created.push(enrichTaskInMemory(task));
+        if (existing) {
+          // Task already exists, update it but preserve status and assignment if not draft
+          let finalStatus = status;
+          let finalVehicleId = vehicleId;
+
+          if (existing.status !== "draft") {
+            finalStatus = existing.status;
+            finalVehicleId = existing.vehicleId;
+          }
+
+          const updateValues = {
+            type: t.type,
+            flightCode: t.flightCode ?? null,
+            passengerCount: t.passengerCount,
+            pickupLocation: t.pickupLocation,
+            dropoffLocation: t.dropoffLocation,
+            scheduledTime: new Date(t.scheduledTime),
+            notes: t.notes ?? null,
+            fee: t.fee != null ? String(t.fee) : null,
+            km,
+            rowIndex: t.rowIndex ?? null,
+            tableType: t.tableType ?? null,
+            shiftDate: excelDate ?? null,
+            status: finalStatus,
+            vehicleId: isImportCancelled ? null : finalVehicleId,
+          };
+
+          const [updatedTask] = await tx
+            .update(tasksTable)
+            .set(updateValues)
+            .where(eq(tasksTable.id, existing.id))
+            .returning();
+
+          if (updatedTask) {
+            updatedTasks.push(enrichTaskInMemory(updatedTask));
+            updatedCount++;
+          } else {
+            skipped++;
+          }
         } else {
-          skipped++;
+          // Task does not exist, insert it
+          const insertValues = {
+            type: t.type,
+            flightCode: t.flightCode ?? null,
+            passengerCount: t.passengerCount,
+            pickupLocation: t.pickupLocation,
+            dropoffLocation: t.dropoffLocation,
+            scheduledTime: new Date(t.scheduledTime),
+            notes: t.notes ?? null,
+            fee: t.fee != null ? String(t.fee) : null,
+            km,
+            importKey: t.importKey ?? null,
+            rowIndex: t.rowIndex ?? null,
+            tableType: t.tableType ?? null,
+            shiftDate: excelDate ?? null,
+            status,
+            vehicleId: isImportCancelled ? null : vehicleId,
+          };
+
+          const [newTask] = await tx
+            .insert(tasksTable)
+            .values(insertValues)
+            .onConflictDoNothing()
+            .returning();
+
+          if (newTask) {
+            created.push(enrichTaskInMemory(newTask));
+          } else {
+            skipped++;
+          }
         }
       } catch (err) {
         const { logger } = await import("../lib/logger");
         logger.error(
           { err, importKey: t.importKey },
-          "Task import insert failed due to unexpected database error",
+          "Task import insert/update failed due to unexpected database error",
         );
         skipped++;
       }
@@ -340,9 +445,9 @@ router.post("/import", async (req, res) => {
 
   return res.json({
     created: created.length,
-    updated: 0,
+    updated: updatedCount,
     skipped,
-    tasks: created,
+    tasks: [...created, ...updatedTasks],
   });
 });
 
@@ -351,146 +456,176 @@ router.post("/batch-notify", async (req, res) => {
   const parsed = BatchNotifyTasksBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  const { taskIds } = parsed.data;
+  if (taskIds.length === 0) {
+    return res.json({ sent: 0, failed: 0, links: [] });
+  }
+
   let sent = 0;
   let failed = 0;
 
-  const driverTasks = new Map<
-    number,
-    {
-      phone: string;
-      driverName: string;
-      tasks: (typeof tasksTable.$inferSelect)[];
-    }
-  >();
-
-  for (const taskId of parsed.data.taskIds) {
-    const [task] = await db
+  try {
+    // 1. Fetch all requested tasks at once
+    const tasks = await db
       .select()
       .from(tasksTable)
-      .where(eq(tasksTable.id, taskId));
-    if (!task || task.status !== "draft" || !task.vehicleId) {
-      failed++;
-      continue;
+      .where(inArray(tasksTable.id, taskIds));
+
+    // 2. Fetch all referenced vehicles at once
+    const vehicleIds = [...new Set(tasks.map((t) => t.vehicleId).filter(Boolean))] as number[];
+    const vehicles = vehicleIds.length > 0
+      ? await db
+          .select()
+          .from(vehiclesTable)
+          .where(inArray(vehiclesTable.id, vehicleIds))
+      : [];
+    const vehicleMap = new Map(vehicles.map((v) => [v.id, v]));
+
+    const driverTasks = new Map<
+      number,
+      {
+        phone: string;
+        driverName: string;
+        tasks: (typeof tasksTable.$inferSelect)[];
+      }
+    >();
+
+    // 3. Match tasks with their vehicles
+    for (const taskId of taskIds) {
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task || task.status !== "draft" || !task.vehicleId) {
+        failed++;
+        continue;
+      }
+
+      const vehicle = vehicleMap.get(task.vehicleId);
+      if (!vehicle) {
+        failed++;
+        continue;
+      }
+
+      if (!driverTasks.has(task.vehicleId)) {
+        driverTasks.set(task.vehicleId, {
+          phone: vehicle.phone,
+          driverName: vehicle.driverName,
+          tasks: [],
+        });
+      }
+      driverTasks.get(task.vehicleId)!.tasks.push(task);
     }
 
-    const [vehicle] = await db
-      .select()
-      .from(vehiclesTable)
-      .where(eq(vehiclesTable.id, task.vehicleId));
-    if (!vehicle) {
-      failed++;
-      continue;
-    }
+    const links: Array<{ driverName: string; phone: string; url: string; taskIds: number[] }> = [];
 
-    if (!driverTasks.has(task.vehicleId)) {
-      driverTasks.set(task.vehicleId, {
-        phone: vehicle.phone,
-        driverName: vehicle.driverName,
-        tasks: [],
-      });
-    }
-    driverTasks.get(task.vehicleId)!.tasks.push(task);
-  }
+    // 4. Update tasks, insert accounting records, and update vehicles in a single transaction
+    await db.transaction(async (tx) => {
+      // Get max queue position once
+      const emptyVehicles = await tx
+        .select({ qp: vehiclesTable.queuePosition })
+        .from(vehiclesTable)
+        .where(eq(vehiclesTable.status, "empty"));
+      let maxPos = emptyVehicles.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);
 
-  const links = [];
+      for (const [vehicleId, data] of driverTasks.entries()) {
+        // Sort tasks by scheduled time
+        const sortedTasks = data.tasks.sort(
+          (a, b) =>
+            new Date(a.scheduledTime).getTime() -
+            new Date(b.scheduledTime).getTime(),
+        );
 
-  for (const [vehicleId, data] of driverTasks.entries()) {
-    // Sort tasks by scheduled time
-    const sortedTasks = data.tasks.sort(
-      (a, b) =>
-        new Date(a.scheduledTime).getTime() -
-        new Date(b.scheduledTime).getTime(),
-    );
+        let messageText = "";
+        const updatedTaskIds = [];
 
-    let messageText = "";
-    const updatedTaskIds = [];
+        for (const task of sortedTasks) {
+          const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "UTC", // Use UTC for formatting since the DB timestamp overrides to UTC format
+          });
+          // Crew notes: use notes field (already contains crew info like "2CPT"), strip plate part
+          const crew = task.notes
+            ? task.notes.includes(" | Plaka:")
+              ? task.notes.split(" | Plaka:")[0]
+              : task.notes
+            : "";
+          // Direction label based on type
+          const direction =
+            task.type === "airport_run"
+              ? "GİDER"
+              : task.type === "hotel_pickup"
+                ? "GELİR"
+                : "EKSTRA";
+          // Main location: hotel name
+          const location =
+            task.type === "airport_run"
+              ? task.dropoffLocation
+              : task.pickupLocation;
+          // Flight code
+          const flight = task.flightCode ?? "";
 
-    for (const task of sortedTasks) {
-      const time = new Date(task.scheduledTime).toLocaleTimeString("tr-TR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      // Crew notes: use notes field (already contains crew info like "2CPT"), strip plate part
-      const crew = task.notes
-        ? task.notes.includes(" | Plaka:")
-          ? task.notes.split(" | Plaka:")[0]
-          : task.notes
-        : "";
-      // Direction label based on type
-      const direction =
-        task.type === "airport_run"
-          ? "GİDER"
-          : task.type === "hotel_pickup"
-            ? "GELİR"
-            : "EKSTRA";
-      // Main location: hotel name
-      const location =
-        task.type === "airport_run"
-          ? task.dropoffLocation
-          : task.pickupLocation;
-      // Flight code
-      const flight = task.flightCode ?? "";
+          // Format: "FMF 183   06:00   RİXOS   2CPT   GELİR"
+          const parts = [flight, time, location, crew, direction].filter(Boolean);
+          messageText += parts.join("   ") + "\n";
+          updatedTaskIds.push(task.id);
+        }
 
-      // Format: "FMF 183   06:00   RİXOS   2CPT   GELİR"
-      const parts = [flight, time, location, crew, direction].filter(Boolean);
-      messageText += parts.join("   ") + "\n";
-      updatedTaskIds.push(task.id);
-    }
+        messageText = messageText.trim();
 
-    messageText = messageText.trim();
+        // Format phone for wa.me
+        let phone = data.phone.replace(/\D/g, "");
+        if (phone.startsWith("0")) phone = phone.substring(1);
+        if (phone.length === 10) phone = "90" + phone;
 
-    // Format phone for wa.me
-    let phone = data.phone.replace(/\D/g, "");
-    if (phone.startsWith("0")) phone = phone.substring(1);
-    if (phone.length === 10) phone = "90" + phone;
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`;
+        links.push({
+          driverName: data.driverName,
+          phone: data.phone,
+          url,
+          taskIds: updatedTaskIds,
+        });
 
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(messageText)}`;
-    links.push({
-      driverName: data.driverName,
-      phone: data.phone,
-      url,
-      taskIds: updatedTaskIds,
-    });
+        // 4A. Update status to completed for all tasks at once
+        await tx
+          .update(tasksTable)
+          .set({ status: "completed" })
+          .where(inArray(tasksTable.id, updatedTaskIds));
 
-    // Update status to completed and handle side effects
-    for (const taskId of updatedTaskIds) {
-      const [task] = await db
-        .update(tasksTable)
-        .set({ status: "completed" })
-        .where(eq(tasksTable.id, taskId))
-        .returning();
-
-      if (task && task.vehicleId) {
-        if (task.fee) {
-          const today = new Date().toISOString().split("T")[0];
-          await db
-            .insert(accountingTable)
-            .values({
-              vehicleId: task.vehicleId,
+        // 4B. Insert accounting records in bulk
+        const accountingInserts = [];
+        const today = new Date().toISOString().split("T")[0];
+        for (const task of sortedTasks) {
+          if (task.fee) {
+            accountingInserts.push({
+              vehicleId,
               taskId: task.id,
               amount: task.fee,
               date: today,
-            })
+            });
+          }
+        }
+
+        if (accountingInserts.length > 0) {
+          await tx
+            .insert(accountingTable)
+            .values(accountingInserts)
             .onConflictDoNothing();
         }
 
-        // Move vehicle back to empty queue (FIFO — add to end)
-        const all = await db
-          .select({ qp: vehiclesTable.queuePosition })
-          .from(vehiclesTable)
-          .where(eq(vehiclesTable.status, "empty"));
-        const maxPos = all.reduce((max, v) => Math.max(max, v.qp ?? 0), 0);
-
-        await db
+        // 4C. Move vehicle back to empty queue (FIFO — add to end)
+        maxPos++;
+        await tx
           .update(vehiclesTable)
-          .set({ status: "empty", queuePosition: maxPos + 1 })
-          .where(eq(vehiclesTable.id, task.vehicleId));
-      }
-      sent++;
-    }
-  }
+          .set({ status: "empty", queuePosition: maxPos })
+          .where(eq(vehiclesTable.id, vehicleId));
 
-  return res.json({ sent, failed, links });
+        sent += updatedTaskIds.length;
+      }
+    });
+
+    return res.json({ sent, failed, links });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Batch notification failed", details: err.message });
+  }
 });
 
 // POST /tasks
@@ -498,15 +633,84 @@ router.post("/", async (req, res) => {
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  let km = parsed.data.km != null ? String(parsed.data.km) : null;
+  const pickup = parsed.data.pickupLocation?.trim();
+  const dropoff = parsed.data.dropoffLocation?.trim();
+
+  // Auto-fill from route preset if not provided (direction-independent)
+  if (!km && pickup && dropoff) {
+    try {
+      const [match] = await db
+        .select()
+        .from(routePresetsTable)
+        .where(
+          or(
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, pickup.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, dropoff.toLowerCase())
+            ),
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, dropoff.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, pickup.toLowerCase())
+            )
+          )
+        )
+        .limit(1);
+      if (match) km = String(match.km);
+    } catch (err) {
+      console.error("Failed to lookup route preset during task creation:", err);
+    }
+  }
+
   const [task] = await db
     .insert(tasksTable)
     .values({
       ...parsed.data,
       scheduledTime: new Date(parsed.data.scheduledTime),
       fee: parsed.data.fee != null ? String(parsed.data.fee) : null,
-      km: parsed.data.km != null ? String(parsed.data.km) : null,
+      km,
     })
     .returning();
+
+  // If KM is set, insert or update the route preset (direction-independent)
+  if (km && Number(km) > 0 && pickup && dropoff) {
+    try {
+      const existing = await db
+        .select()
+        .from(routePresetsTable)
+        .where(
+          or(
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, pickup.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, dropoff.toLowerCase())
+            ),
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, dropoff.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, pickup.toLowerCase())
+            )
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(routePresetsTable)
+          .set({ km: String(km) })
+          .where(eq(routePresetsTable.id, existing[0].id));
+      } else {
+        await db
+          .insert(routePresetsTable)
+          .values({
+            pickupLocation: pickup,
+            dropoffLocation: dropoff,
+            km: String(km),
+          })
+          .onConflictDoNothing();
+      }
+    } catch (err) {
+      console.error("Failed to upsert route preset during task creation:", err);
+    }
+  }
 
   return res.status(201).json(await enrichTask(task));
 });
@@ -550,6 +754,50 @@ router.patch("/:id", async (req, res) => {
     .returning();
 
   if (!task) return res.status(404).json({ error: "Task not found" });
+
+  // If KM is set, insert or update the route preset (direction-independent)
+  if (task.km && Number(task.km) > 0 && task.pickupLocation && task.dropoffLocation) {
+    const pickup = task.pickupLocation.trim();
+    const dropoff = task.dropoffLocation.trim();
+    const km = task.km;
+
+    try {
+      const existing = await db
+        .select()
+        .from(routePresetsTable)
+        .where(
+          or(
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, pickup.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, dropoff.toLowerCase())
+            ),
+            and(
+              eq(sql`lower(trim(${routePresetsTable.pickupLocation}))`, dropoff.toLowerCase()),
+              eq(sql`lower(trim(${routePresetsTable.dropoffLocation}))`, pickup.toLowerCase())
+            )
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(routePresetsTable)
+          .set({ km: String(km) })
+          .where(eq(routePresetsTable.id, existing[0].id));
+      } else {
+        await db
+          .insert(routePresetsTable)
+          .values({
+            pickupLocation: pickup,
+            dropoffLocation: dropoff,
+            km: String(km),
+          })
+          .onConflictDoNothing();
+      }
+    } catch (err) {
+      console.error("Failed to upsert route preset during task update:", err);
+    }
+  }
 
   // If task completed and has a fee, create accounting record
   if (parsed.data.status === "completed" && task.vehicleId && task.fee) {

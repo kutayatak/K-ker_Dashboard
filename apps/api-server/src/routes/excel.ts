@@ -52,11 +52,12 @@ router.post("/upload", async (req: any, res: any) => {
     const cleanData = data.includes(",") ? data.split(",")[1] : data;
 
     // Check if an existing record exists under either format (legacy DDMMYY or new YYYY-MM-DD)
-    const allFiles = await db.select({ id: excelFilesTable.id, date: excelFilesTable.date }).from(excelFilesTable);
-    const existing = allFiles.find((f) => {
-      const norm = normalizeToYMD(f.date);
-      return norm === normalizedDate || f.date === legacyDMY || f.date === normalizedDate;
-    });
+    const files = await db
+      .select({ id: excelFilesTable.id, date: excelFilesTable.date })
+      .from(excelFilesTable)
+      .where(inArray(excelFilesTable.date, [normalizedDate, legacyDMY]))
+      .limit(1);
+    const existing = files[0];
 
     if (existing) {
       // Update existing record (whether stored as DDMMYY or YYYY-MM-DD)
@@ -102,12 +103,13 @@ router.get("/download", async (req: any, res: any) => {
     const requestedYMD = normalizeToYMD(date);
     const requestedDMY = formatToDDMMYY(requestedYMD);
 
-    // Fetch all files and match in JS to avoid SQL type/format issues
-    const allFiles = await db.select().from(excelFilesTable);
-    const file = allFiles.find((f) => {
-      const normalizedDb = normalizeToYMD(f.date);
-      return normalizedDb === requestedYMD || f.date === requestedDMY || f.date === requestedYMD;
-    });
+    // Fetch matching file record only to avoid loading everything
+    const files = await db
+      .select()
+      .from(excelFilesTable)
+      .where(inArray(excelFilesTable.date, [requestedYMD, requestedDMY]))
+      .limit(1);
+    const file = files[0];
 
     if (!file)
       return res
@@ -340,36 +342,47 @@ router.get("/has", async (req, res) => {
   const requestedYMD = normalizeToYMD(date);
   const requestedDMY = formatToDDMMYY(requestedYMD);
 
-  const allFiles = await db
-    .select({
-      id: excelFilesTable.id,
-      filename: excelFilesTable.filename,
-      uploadedAt: excelFilesTable.uploadedAt,
-      date: excelFilesTable.date,
-    })
-    .from(excelFilesTable);
+  try {
+    const files = await db
+      .select({
+        id: excelFilesTable.id,
+        filename: excelFilesTable.filename,
+        uploadedAt: excelFilesTable.uploadedAt,
+        date: excelFilesTable.date,
+      })
+      .from(excelFilesTable)
+      .where(inArray(excelFilesTable.date, [requestedYMD, requestedDMY]))
+      .limit(1);
 
-  const file = allFiles.find((f) => {
-    const norm = normalizeToYMD(f.date);
-    return norm === requestedYMD || f.date === requestedDMY || f.date === requestedYMD;
-  });
+    const file = files[0];
 
-  return res.json({
-    exists: !!file,
-    filename: file?.filename ?? null,
-    uploadedAt: file?.uploadedAt ?? null,
-  });
+    return res.json({
+      exists: !!file,
+      filename: file?.filename ?? null,
+      uploadedAt: file?.uploadedAt ?? null,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to check excel storage status", details: err.message });
+  }
 });
 
 // GET /excel/debug-tasks
-// Returns the last 100 tasks in the database for debugging
+// Returns the last 100 tasks in the database for debugging (dev-only)
 router.get("/debug-tasks", async (req, res) => {
-  const tasks = await db
-    .select()
-    .from(tasksTable)
-    .orderBy(sql`${tasksTable.id} DESC`)
-    .limit(100);
-  return res.json(tasks);
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Forbidden in production" });
+  }
+
+  try {
+    const tasks = await db
+      .select()
+      .from(tasksTable)
+      .orderBy(sql`${tasksTable.id} DESC`)
+      .limit(100);
+    return res.json(tasks);
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to fetch debug tasks", details: err.message });
+  }
 });
 
 export default router;

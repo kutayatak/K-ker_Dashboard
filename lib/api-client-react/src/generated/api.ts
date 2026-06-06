@@ -31,6 +31,7 @@ import type {
   ListTasksParams,
   ListVehiclesParams,
   Task,
+  TaskCalendarDay,
   TaskImport,
   TaskInput,
   TaskUpdate,
@@ -802,6 +803,83 @@ export function useGetTasksSummary<TData = Awaited<ReturnType<typeof getTasksSum
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetTasksSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTasksCalendarUrl = () => {
+
+
+
+
+  return `/api/tasks/calendar`
+}
+
+/**
+ * @summary Calendar highlights — active/completed status by date
+ */
+export const getTasksCalendar = async ( options?: RequestInit): Promise<TaskCalendarDay[]> => {
+
+  return customFetch<TaskCalendarDay[]>(getGetTasksCalendarUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTasksCalendarQueryKey = () => {
+    return [
+    `/api/tasks/calendar`
+    ] as const;
+    }
+
+
+export const getGetTasksCalendarQueryOptions = <TData = Awaited<ReturnType<typeof getTasksCalendar>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTasksCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTasksCalendarQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTasksCalendar>>> = ({ signal }) => getTasksCalendar({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTasksCalendar>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTasksCalendarQueryResult = NonNullable<Awaited<ReturnType<typeof getTasksCalendar>>>
+export type GetTasksCalendarQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Calendar highlights — active/completed status by date
+ */
+
+export function useGetTasksCalendar<TData = Awaited<ReturnType<typeof getTasksCalendar>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTasksCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTasksCalendarQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
