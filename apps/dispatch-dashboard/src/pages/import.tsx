@@ -512,163 +512,117 @@ export function ImportTasks() {
           const tasks: any[] = [];
           let currentSection: "regular" | "ekstra" = "regular";
 
-          let lastTimeMinutesLeft = -1;
-          let dateOffsetLeft = 0;
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i];
+              if (!row || row.every((c) => c == null || c === "")) continue;
 
-          let lastTimeMinutesRight = -1;
-          let dateOffsetRight = 0;
+              // ── Determine column A type ──────────────────────────────────────
+              // Must do this FIRST. Section-header text detection must only run on
+              // non-data rows. If a data row's hotel name or notes contain "ekstra",
+              // the old code would prematurely switch sections — now it can't.
+              const colAVal = row[0];
+              const colAStr = colAVal != null ? String(colAVal).trim() : "";
+              // A valid data row always has a positive integer in column A (S.NO).
+              const colAIsNumeric =
+                colAStr !== "" && !isNaN(Number(colAStr)) && Number(colAStr) >= 1;
 
-          for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row || row.every((c) => c == null || c === "")) continue;
+              // ── Non-data row: section-header detection ───────────────────────
+              if (!colAIsNumeric) {
+                // Only examine header/separator rows for section keywords.
+                // Now that we guard on colAIsNumeric, data rows with "ekstra"
+                // in their hotel name, notes, etc. can never trigger this path.
+                const rowText = row
+                  .map((c) => String(c || ""))
+                  .join(" ")
+                  .toLowerCase();
 
-            // ── Determine column A type ──────────────────────────────────────
-            // Must do this FIRST. Section-header text detection must only run on
-            // non-data rows. If a data row's hotel name or notes contain "ekstra",
-            // the old code would prematurely switch sections — now it can't.
-            const colAVal = row[0];
-            const colAStr = colAVal != null ? String(colAVal).trim() : "";
-            // A valid data row always has a positive integer in column A (S.NO).
-            const colAIsNumeric =
-              colAStr !== "" && !isNaN(Number(colAStr)) && Number(colAStr) >= 1;
-
-            // ── Non-data row: section-header detection ───────────────────────
-            if (!colAIsNumeric) {
-              // Only examine header/separator rows for section keywords.
-              // Now that we guard on colAIsNumeric, data rows with "ekstra"
-              // in their hotel name, notes, etc. can never trigger this path.
-              const rowText = row
-                .map((c) => String(c || ""))
-                .join(" ")
-                .toLowerCase();
-
-              if (
-                (rowText.includes("ekstra") || rowText.includes("ekst.")) &&
-                currentSection !== "ekstra"
-              ) {
-                currentSection = "ekstra";
-                lastTimeMinutesLeft = -1;
-                dateOffsetLeft = 0;
-                lastTimeMinutesRight = -1;
-                dateOffsetRight = 0;
-                console.log(`excel import: section → ekstra (header row ${i})`);
+                if (
+                  (rowText.includes("ekstra") || rowText.includes("ekst.")) &&
+                  currentSection !== "ekstra"
+                ) {
+                  currentSection = "ekstra";
+                  console.log(`excel import: section → ekstra (header row ${i})`);
+                }
+                // All non-data rows (headers, separators, totals) are skipped.
+                continue;
               }
-              // All non-data rows (headers, separators, totals) are skipped.
-              continue;
-            }
 
-            // ── Data row: S.NO=1 ekstra section heuristic ───────────────────
-            // Detects the ekstra section's first data row when there is no
-            // explicit "EKSTRALAR" header row.
-            //
-            // Column layout comparison:
-            //   Regular: A=S.NO, B=flight, C=plate, D=time,  E=hotel, F=crew
-            //   Ekstra:  A=S.NO, B=time,   C=plate, D=desc,  E=empty, F=empty
-            //
-            // The ONLY reliable signal is: E (hotel) is empty AND D has a value.
-            // We do NOT check B (flight) because in ekstra layout B = time, which
-            // is a valid numeric fraction — isValidValue would return true, making
-            // "noFlightInColB" always false and the heuristic never trigger.
-            if (colAStr === "1" && i > 10 && currentSection === "regular") {
-              const noHotelInColE = !isValidValue(row[4]);
-              const hasDescInColD = isValidValue(row[3]);
+              // ── Data row: S.NO=1 ekstra section heuristic ───────────────────
+              // Detects the ekstra section's first data row when there is no
+              // explicit "EKSTRALAR" header row.
+              //
+              // Column layout comparison:
+              //   Regular: A=S.NO, B=flight, C=plate, D=time,  E=hotel, F=crew
+              //   Ekstra:  A=S.NO, B=time,   C=plate, D=desc,  E=empty, F=empty
+              //
+              // The ONLY reliable signal is: E (hotel) is empty AND D has a value.
+              // We do NOT check B (flight) because in ekstra layout B = time, which
+              // is a valid numeric fraction — isValidValue would return true, making
+              // "noFlightInColB" always false and the heuristic never trigger.
+              if (colAStr === "1" && i > 10 && currentSection === "regular") {
+                const noHotelInColE = !isValidValue(row[4]);
+                const hasDescInColD = isValidValue(row[3]);
 
-              if (noHotelInColE && hasDescInColD) {
-                currentSection = "ekstra";
-                lastTimeMinutesLeft = -1;
-                dateOffsetLeft = 0;
-                lastTimeMinutesRight = -1;
-                dateOffsetRight = 0;
-                console.log(
-                  `excel import: section → ekstra (S.NO=1 heuristic row ${i})`,
+                if (noHotelInColE && hasDescInColD) {
+                  currentSection = "ekstra";
+                  console.log(
+                    `excel import: section → ekstra (S.NO=1 heuristic row ${i})`,
+                  );
+                }
+              }
+
+              if (currentSection === "regular") {
+                const timeMinutesLeft = getTimeMinutes(row[3]);
+                const rowDateOffsetLeft = (timeMinutesLeft !== null && timeMinutesLeft < 6 * 60) ? 1 : 0;
+
+                const leftTask = buildRegularTask(
+                  row,
+                  i + 1,
+                  "left",
+                  targetDate,
+                  rowDateOffsetLeft,
                 );
+                if (leftTask) tasks.push(...splitTask(leftTask));
+
+                const timeMinutesRight = getTimeMinutes(row[9]);
+                const rowDateOffsetRight = (timeMinutesRight !== null && timeMinutesRight < 6 * 60) ? 1 : 0;
+
+                const rightTask = buildRegularTask(
+                  row,
+                  i + 1,
+                  "right",
+                  targetDate,
+                  rowDateOffsetRight,
+                );
+                if (rightTask) tasks.push(...splitTask(rightTask));
+              } else {
+                const timeMinutesLeft = getTimeMinutes(row[1]);
+                const rowDateOffsetLeft = (timeMinutesLeft !== null && timeMinutesLeft < 6 * 60) ? 1 : 0;
+
+                const leftTask = buildEkstraTask(
+                  row,
+                  i + 1,
+                  "left",
+                  targetDate,
+                  rowDateOffsetLeft,
+                  rowIsYellow[i],
+                );
+                if (leftTask) tasks.push(...splitTask(leftTask));
+
+                const timeMinutesRight = getTimeMinutes(row[7]);
+                const rowDateOffsetRight = (timeMinutesRight !== null && timeMinutesRight < 6 * 60) ? 1 : 0;
+
+                const rightTask = buildEkstraTask(
+                  row,
+                  i + 1,
+                  "right",
+                  targetDate,
+                  rowDateOffsetRight,
+                  rowIsYellow[i],
+                );
+                if (rightTask) tasks.push(...splitTask(rightTask));
               }
             }
-
-            if (currentSection === "regular") {
-              const timeMinutesLeft = getTimeMinutes(row[3]);
-              if (timeMinutesLeft !== null) {
-                if (
-                  lastTimeMinutesLeft !== -1 &&
-                  timeMinutesLeft < lastTimeMinutesLeft
-                ) {
-                  dateOffsetLeft = 1;
-                }
-                lastTimeMinutesLeft = timeMinutesLeft;
-              }
-
-              const leftTask = buildRegularTask(
-                row,
-                i + 1,
-                "left",
-                targetDate,
-                dateOffsetLeft,
-              );
-              if (leftTask) tasks.push(...splitTask(leftTask));
-
-              const timeMinutesRight = getTimeMinutes(row[9]);
-              if (timeMinutesRight !== null) {
-                if (
-                  lastTimeMinutesRight !== -1 &&
-                  timeMinutesRight < lastTimeMinutesRight
-                ) {
-                  dateOffsetRight = 1;
-                }
-                lastTimeMinutesRight = timeMinutesRight;
-              }
-
-              const rightTask = buildRegularTask(
-                row,
-                i + 1,
-                "right",
-                targetDate,
-                dateOffsetRight,
-              );
-              if (rightTask) tasks.push(...splitTask(rightTask));
-            } else {
-              const timeMinutesLeft = getTimeMinutes(row[1]);
-              if (timeMinutesLeft !== null) {
-                if (
-                  lastTimeMinutesLeft !== -1 &&
-                  timeMinutesLeft < lastTimeMinutesLeft
-                ) {
-                  dateOffsetLeft = 1;
-                }
-                lastTimeMinutesLeft = timeMinutesLeft;
-              }
-
-              const leftTask = buildEkstraTask(
-                row,
-                i + 1,
-                "left",
-                targetDate,
-                dateOffsetLeft,
-                rowIsYellow[i],
-              );
-              if (leftTask) tasks.push(...splitTask(leftTask));
-
-              const timeMinutesRight = getTimeMinutes(row[7]);
-              if (timeMinutesRight !== null) {
-                if (
-                  lastTimeMinutesRight !== -1 &&
-                  timeMinutesRight < lastTimeMinutesRight
-                ) {
-                  dateOffsetRight = 1;
-                }
-                lastTimeMinutesRight = timeMinutesRight;
-              }
-
-              const rightTask = buildEkstraTask(
-                row,
-                i + 1,
-                "right",
-                targetDate,
-                dateOffsetRight,
-                rowIsYellow[i],
-              );
-              if (rightTask) tasks.push(...splitTask(rightTask));
-            }
-          }
 
           if (tasks.length === 0) {
             setParseError(
@@ -909,8 +863,6 @@ export function ImportTasks() {
 
           const tasks: any[] = [];
           let currentSection: "regular" | "ekstra" = "regular";
-          let lastTimeMinutesLeft = -1, dateOffsetLeft = 0;
-          let lastTimeMinutesRight = -1, dateOffsetRight = 0;
 
           for (let i = 0; i < rows.length; i++) {
             const row = rows[i];
@@ -923,8 +875,6 @@ export function ImportTasks() {
               const rowText = row.map((c) => String(c || "")).join(" ").toLowerCase();
               if ((rowText.includes("ekstra") || rowText.includes("ekst.")) && currentSection !== "ekstra") {
                 currentSection = "ekstra";
-                lastTimeMinutesLeft = -1; dateOffsetLeft = 0;
-                lastTimeMinutesRight = -1; dateOffsetRight = 0;
               }
               continue;
             }
@@ -932,28 +882,28 @@ export function ImportTasks() {
             if (colAStr === "1" && i > 10 && currentSection === "regular") {
               if (!isValidValue(row[4]) && isValidValue(row[3])) {
                 currentSection = "ekstra";
-                lastTimeMinutesLeft = -1; dateOffsetLeft = 0;
-                lastTimeMinutesRight = -1; dateOffsetRight = 0;
               }
             }
 
             if (currentSection === "regular") {
               const tmL = getTimeMinutes(row[3]);
-              if (tmL !== null) { if (lastTimeMinutesLeft !== -1 && tmL < lastTimeMinutesLeft) dateOffsetLeft = 1; lastTimeMinutesLeft = tmL; }
-              const lTask = buildRegularTask(row, i + 1, "left", date, dateOffsetLeft);
+              const rowDateOffsetLeft = (tmL !== null && tmL < 6 * 60) ? 1 : 0;
+              const lTask = buildRegularTask(row, i + 1, "left", date, rowDateOffsetLeft);
               if (lTask) tasks.push(...splitTask(lTask));
+
               const tmR = getTimeMinutes(row[9]);
-              if (tmR !== null) { if (lastTimeMinutesRight !== -1 && tmR < lastTimeMinutesRight) dateOffsetRight = 1; lastTimeMinutesRight = tmR; }
-              const rTask = buildRegularTask(row, i + 1, "right", date, dateOffsetRight);
+              const rowDateOffsetRight = (tmR !== null && tmR < 6 * 60) ? 1 : 0;
+              const rTask = buildRegularTask(row, i + 1, "right", date, rowDateOffsetRight);
               if (rTask) tasks.push(...splitTask(rTask));
             } else {
               const tmL = getTimeMinutes(row[1]);
-              if (tmL !== null) { if (lastTimeMinutesLeft !== -1 && tmL < lastTimeMinutesLeft) dateOffsetLeft = 1; lastTimeMinutesLeft = tmL; }
-              const lTask = buildEkstraTask(row, i + 1, "left", date, dateOffsetLeft, rowIsYellow[i]);
+              const rowDateOffsetLeft = (tmL !== null && tmL < 6 * 60) ? 1 : 0;
+              const lTask = buildEkstraTask(row, i + 1, "left", date, rowDateOffsetLeft, rowIsYellow[i]);
               if (lTask) tasks.push(...splitTask(lTask));
+
               const tmR = getTimeMinutes(row[7]);
-              if (tmR !== null) { if (lastTimeMinutesRight !== -1 && tmR < lastTimeMinutesRight) dateOffsetRight = 1; lastTimeMinutesRight = tmR; }
-              const rTask = buildEkstraTask(row, i + 1, "right", date, dateOffsetRight, rowIsYellow[i]);
+              const rowDateOffsetRight = (tmR !== null && tmR < 6 * 60) ? 1 : 0;
+              const rTask = buildEkstraTask(row, i + 1, "right", date, rowDateOffsetRight, rowIsYellow[i]);
               if (rTask) tasks.push(...splitTask(rTask));
             }
           }

@@ -348,15 +348,24 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     setSelectedDate(`${yyyy}-${mm}-${dd}`);
   };
 
+  const getShiftDateKey = (scheduledTime: string) => {
+    const d = new Date(scheduledTime);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+  };
+
   // Pre-compute Date[] arrays for calendar day coloring (much more stable than function matchers)
   const { completedDays, uncompletedDays } = useMemo(() => {
     const byDate = new Map<string, { hasActive: boolean }>();
     if (Array.isArray(tasks)) {
       for (const t of tasks as any[]) {
-        if (!t?.scheduledTime || t.scheduledTime.length < 10) continue;
-        const key = t.scheduledTime.substring(0, 10);
+        const key: string = t.shiftDate ?? getShiftDateKey(t.scheduledTime);
+        if (!key) continue;
         const prev = byDate.get(key);
-        const isActive = t.status !== "completed" && t.status !== "cancelled";
+        const isActive =
+          t.status !== "completed" &&
+          t.status !== "cancelled" &&
+          t.type !== "technical";
         byDate.set(key, { hasActive: (prev?.hasActive ?? false) || isActive });
       }
     }
@@ -376,11 +385,15 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
     uncompleted: uncompletedDays,
   };
 
-  // Filter tasks within the calendar window using stable UTC date part matching
-  const dayTasks = tasks.filter((t) => {
-    if (!t?.scheduledTime || t.scheduledTime.length < 10) return false;
-    const dateStr = t.scheduledTime.substring(0, 10);
-    return dateStr === selectedDate;
+  // Filter tasks within the calendar window using stable UTC date part matching with shiftDate fallback
+  const [yVal, mVal, ddVal] = selectedDate.split("-").map(Number);
+  const shiftStart = new Date(Date.UTC(yVal, mVal - 1, ddVal, 0, 0, 0, 0));
+  const shiftEndLegacy = new Date(Date.UTC(yVal, mVal - 1, ddVal + 2, 0, 0, 0, 0));
+
+  const dayTasks = tasks.filter((t: any) => {
+    if (t.shiftDate) return t.shiftDate === selectedDate;
+    const time = new Date(t.scheduledTime);
+    return time >= shiftStart && time < shiftEndLegacy;
   });
 
   const sortTasksByTime = (a: Task, b: Task) =>

@@ -111,6 +111,7 @@ export function ExcelView() {
     }
     return new Date().toISOString().split("T")[0];
   });
+  const [hideAssigned, setHideAssigned] = useState(false);
 
   useEffect(() => {
     const handleUrlChange = () => {
@@ -483,6 +484,11 @@ export function ExcelView() {
     return match ? match[1].trim() : null;
   };
 
+  const filteredDayTasks = useMemo(() => {
+    if (!hideAssigned) return dayTasks;
+    return dayTasks.filter((t) => !t.vehicleId && !getPlateFromNotes(t.notes));
+  }, [dayTasks, hideAssigned]);
+
   const sortTasks = (a: ExtendedTask, b: ExtendedTask) => {
     const timeA = new Date(a.scheduledTime).getTime();
     const timeB = new Date(b.scheduledTime).getTime();
@@ -490,25 +496,25 @@ export function ExcelView() {
     return (a.rowIndex ?? 9999) - (b.rowIndex ?? 9999);
   };
 
-  const leftRegular = dayTasks
+  const leftRegular = filteredDayTasks
     .filter(
       (t) =>
         t.tableType === "left" && t.type !== "extra" && t.type !== "technical",
     )
     .sort(sortTasks);
-  const rightRegular = dayTasks
+  const rightRegular = filteredDayTasks
     .filter(
       (t) =>
         t.tableType === "right" && t.type !== "extra" && t.type !== "technical",
     )
     .sort(sortTasks);
-  const leftExtras = dayTasks
+  const leftExtras = filteredDayTasks
     .filter((t) => t.tableType === "left" && t.type === "extra")
     .sort(sortTasks);
-  const rightExtras = dayTasks
+  const rightExtras = filteredDayTasks
     .filter((t) => t.tableType === "right" && t.type === "extra")
     .sort(sortTasks);
-  const technicalTasks = dayTasks
+  const technicalTasks = filteredDayTasks
     .filter((t) => t.type === "technical")
     .sort(sortTasks);
 
@@ -1368,6 +1374,17 @@ export function ExcelView() {
                 />
               </PopoverContent>
             </Popover>
+          </div>
+          <div className="flex items-center gap-2 bg-muted/30 p-1.5 rounded-md border border-slate-100 dark:border-slate-800">
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground cursor-pointer px-1.5 select-none">
+              <input
+                type="checkbox"
+                checked={hideAssigned}
+                onChange={(e) => setHideAssigned(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+              />
+              Plaka Yazılanları Gizle
+            </label>
           </div>
         </div>
 
@@ -2327,7 +2344,7 @@ export function ExcelView() {
            MOBILE VIEW — tab-based card layout (visible only on small screens)
          ══════════════════════════════════════════════════════════════════ */}
       <MobileExcelView
-        dayTasks={dayTasks}
+        dayTasks={filteredDayTasks}
         leftRegular={leftRegular}
         rightRegular={rightRegular}
         leftExtras={leftExtras}
@@ -2352,6 +2369,7 @@ export function ExcelView() {
         tasksPending={tasksPending}
         setAddingTaskState={setAddingTaskState}
         setAddForm={setAddForm}
+        handleNotifySingle={handleNotifySingle}
       />
     </div>
   );
@@ -2384,6 +2402,7 @@ function MobileExcelView({
   openEdit,
   setAddingTaskState,
   setAddForm,
+  handleNotifySingle,
 }: {
   dayTasks: ExtendedTask[];
   leftRegular: ExtendedTask[];
@@ -2410,7 +2429,12 @@ function MobileExcelView({
   tasksPending: boolean;
   setAddingTaskState: (state: { tableType: "left" | "right" | null; type: "hotel_pickup" | "airport_run" | "extra" | "technical" } | null) => void;
   setAddForm: (form: { flightCode: string; time: string; notes: string; km: string; hotelName: string }) => void;
+  handleNotifySingle: (taskId: number) => void;
 }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const updateTaskMutation = useUpdateTask();
+
   const [activeTab, setActiveTab] = useState<MobileTab>("gelir");
 
   const tabs: {
@@ -2501,6 +2525,73 @@ function MobileExcelView({
         ? task.dropoffLocation || task.pickupLocation
         : task.pickupLocation;
 
+    const isExcelCompleted = task.status === "completed";
+    const isAssigned = !!task.vehicleId;
+    const isNotified = task.status === "assigned" || task.status === "completed";
+    const isDraft = task.status === "draft";
+
+    const customPlateVal = getPlateFromNotes(task.notes);
+    const isCustomPlate = !task.vehicleId && !!customPlateVal;
+    const hasRealVehicle = !!task.vehicleId;
+
+    const getWaUrl = (phone: string, message: string) => {
+      let cleanPhone = phone.replace(/\D/g, "");
+      if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
+      if (cleanPhone.length === 10) cleanPhone = "90" + cleanPhone;
+      return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    };
+
+    const getTaskMessageText = () => {
+      const time = utcTime(task.scheduledTime);
+      const direction =
+        task.type === "airport_run"
+          ? "GİDER"
+          : task.type === "hotel_pickup"
+            ? "GELİR"
+            : "EKSTRA";
+      const location =
+        task.type === "airport_run"
+          ? task.dropoffLocation
+          : task.pickupLocation;
+
+      const getCrewWithoutPlate = (n: string | null | undefined) => {
+        if (!n) return "";
+        const parts = n.split(/plaka:/i);
+        let c = parts[0].trim();
+        if (c.endsWith("|")) c = c.slice(0, -1).trim();
+        return c;
+      };
+      const crew = getCrewWithoutPlate(task.notes);
+
+      const parts = task.type === "extra"
+        ? [time, location, crew].filter(Boolean)
+        : [task.flightCode, time, location, crew, direction].filter(Boolean);
+      return parts.join("   ");
+    };
+
+    const handleCopy = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const msg = getTaskMessageText();
+      navigator.clipboard.writeText(msg).then(() => {
+        toast({
+          title: "Kopyalandı",
+          description: "WhatsApp mesaj metni panoya kopyalandı.",
+        });
+        if (task.status === "draft") {
+          updateTaskMutation.mutate({
+            id: task.id,
+            data: { status: "completed" },
+          }, {
+            onSuccess: () => {
+              queryClient.invalidateQueries({ queryKey: getListTasksQueryKey() });
+            }
+          });
+        }
+      }).catch(err => {
+        console.error("Copy failed: ", err);
+      });
+    };
+
     return (
       <div
         className={`rounded-lg border border-l-4 ${accentColor} bg-card shadow-sm p-3 flex flex-col gap-2 ${
@@ -2590,6 +2681,77 @@ function MobileExcelView({
             ))}
           </select>
         </div>
+
+        {/* Notify & Copy buttons on mobile */}
+        {task.status !== "cancelled" && (() => {
+          if (hasRealVehicle) {
+            return (
+              <div className="flex items-center justify-between px-1 text-[11px] select-none gap-1 mt-1">
+                {isNotified ? (
+                  <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
+                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
+                      ✓
+                    </span>
+                    Bildirildi
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
+                    Bildirilmedi
+                  </span>
+                )}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (task.status === "draft") {
+                        handleNotifySingle(task.id);
+                      } else {
+                        const vehicle = vehicles.find((v: any) => v.id === task.vehicleId);
+                        if (vehicle) {
+                          const msg = getTaskMessageText();
+                          window.open(getWaUrl(vehicle.phone, msg), "_blank");
+                        }
+                      }
+                    }}
+                    className="px-2.5 py-1 bg-primary text-primary-foreground hover:bg-primary/95 text-[10px] font-bold rounded shadow-xs transition-all flex items-center"
+                  >
+                    <Send className="w-3 h-3 mr-0.5" />
+                    Bildir
+                  </button>
+                </div>
+              </div>
+            );
+          } else if (isCustomPlate) {
+            return (
+              <div className="flex items-center justify-between px-1 text-[11px] select-none gap-1 mt-1">
+                {task.status === "completed" ? (
+                  <span className="flex items-center gap-0.5 text-emerald-600 font-semibold">
+                    <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 flex items-center justify-center text-[9px] text-emerald-600 font-bold">
+                      ✓
+                    </span>
+                    Kopyalandı
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-0.5 text-slate-500 font-semibold">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 flex items-center justify-center text-[8px]"></span>
+                    Kopyalanmadı
+                  </span>
+                )}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleCopy}
+                    className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 dark:border-slate-700 text-[10px] font-bold rounded shadow-xs transition-all flex items-center"
+                  >
+                    <Copy className="w-3 h-3 mr-0.5" />
+                    Kopyala
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
     );
   };
