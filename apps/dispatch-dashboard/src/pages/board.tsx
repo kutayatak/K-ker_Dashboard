@@ -413,12 +413,15 @@ export function Board({ initialTab }: { initialTab?: TabKey } = {}) {
         t.status !== "cancelled",
     )
     .sort(sortTasksByTime);
-  const isGelirTask = (t: Task) =>
-    t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gelir";
-  const isGiderTask = (t: Task) =>
-    t.type === "airport_run" ||
-    t.dropoffLocation === "Ekstra Gider" ||
-    (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir");
+  const isGelirTask = (t: Task) => {
+    const tt = (t as any).tableType as string | null | undefined;
+    return tt === "left" || (!tt && (t.type === "hotel_pickup" || t.dropoffLocation === "Ekstra Gelir"));
+  };
+  const isGiderTask = (t: Task) => {
+    const tt = (t as any).tableType as string | null | undefined;
+    return tt === "right" || (!tt && (t.type === "airport_run" || t.dropoffLocation === "Ekstra Gider" || (t.type === "extra" && t.dropoffLocation !== "Ekstra Gelir")));
+  };
+
 
   const gelirTasks = activeTasks.filter(isGelirTask).sort(sortTasksByTime);
   const giderTasks = activeTasks.filter(isGiderTask).sort(sortTasksByTime);
@@ -2044,8 +2047,11 @@ function TaskCard({
   };
 
   // Colour coding for completed column
+  const taskTableType = (task as any).tableType as string | null | undefined;
   const isGelirType =
-    task.type === "airport_run" || task.dropoffLocation === "Ekstra Gelir";
+    taskTableType === "left" ||
+    (!taskTableType && (task.type === "hotel_pickup" || task.dropoffLocation === "Ekstra Gelir"));
+
 
   // Drag-over state for vehicle assignment
   const [isDragOver, setIsDragOver] = useState(false);

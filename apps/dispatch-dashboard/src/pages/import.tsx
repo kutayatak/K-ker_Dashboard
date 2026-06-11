@@ -310,7 +310,7 @@ function buildEkstraTask(
       desc.toLowerCase().includes("kod");
 
     const type = isTechnical ? "technical" : "extra";
-    const dropoffLocation = isTechnical ? "Teknik Gider" : "Ekstra Gider";
+    const dropoffLocation = isTechnical ? "Teknik Gelir" : "Ekstra Gelir";
 
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
     const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}|left|r${rowIndex}`;
@@ -363,7 +363,7 @@ function buildEkstraTask(
       desc.toLowerCase().includes("kod");
 
     const type = isTechnical ? "technical" : "extra";
-    const dropoffLocation = isTechnical ? "Teknik Gelir" : "Ekstra Gelir";
+    const dropoffLocation = isTechnical ? "Teknik Gider" : "Ekstra Gider";
 
     const scheduledTime = buildScheduledTime(timeRaw, baseDateStr, dateOffset);
     const importKey = `${type}|${scheduledTime}|${desc}|${dropoffLocation}|right|r${rowIndex}`;
